@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # App
     frontend_url: str = "http://localhost:3000"
     rate_limit_chat: str = "15/hour"
+    public_api_url: str = "http://localhost:8000"
 
 
 settings = Settings()
