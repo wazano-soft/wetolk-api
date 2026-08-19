@@ -6,8 +6,11 @@ pydantic-settings==2.15.0
 # Storage (R2, S3-compatible)
 boto3
 
-# DB access (direto a Postgres, local en dev / Supabase en prod) + Auth
-psycopg[binary,pool]
+# DB access (directo a Postgres, local en dev / Supabase en prod) + Auth
+sqlalchemy
+alembic
+pgvector
+psycopg[binary]
 pyjwt
 
 # PDF extraction

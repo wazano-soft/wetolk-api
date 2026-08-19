@@ -1,0 +1,413 @@
+import uuid
+from datetime import date, datetime
+
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    ARRAY,
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    SmallInteger,
+    Text,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def _uuid_pk():
+    return mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+
+
+class Profile(Base):
+    __tablename__ = "profiles"
+
+    # Sin FK a auth.users a propósito — ver nota en db/0001_init.sql.
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    role: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="candidate"
+    )
+    full_name: Mapped[str | None] = mapped_column(Text)
+    locale: Mapped[str] = mapped_column(Text, nullable=False, server_default="es")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("role in ('candidate','recruiter','admin')", name="profiles_role_check"),
+        CheckConstraint("locale in ('es','en')", name="profiles_locale_check"),
+        {"schema": "public"},
+    )
+
+
+class Candidate(Base):
+    __tablename__ = "candidates"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("public.profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+
+    slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    storage_token: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, unique=True, server_default=text("gen_random_uuid()")
+    )
+
+    headline: Mapped[str | None] = mapped_column(Text)
+    degree: Mapped[str | None] = mapped_column(Text)
+    overview: Mapped[str | None] = mapped_column(Text)
+    years_experience: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    years_experience_updated_at: Mapped[date | None] = mapped_column(Date)
+    skills: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
+    interests: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
+
+    work_mode: Mapped[str | None] = mapped_column(Text)
+    location_city: Mapped[str | None] = mapped_column(Text)
+    location_country: Mapped[str | None] = mapped_column(Text)
+    willing_relocate: Mapped[bool | None] = mapped_column(Boolean, server_default=text("false"))
+    salary_min: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    salary_max: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    salary_currency: Mapped[str | None] = mapped_column(Text, server_default="MXN")
+
+    linkedin_url: Mapped[str | None] = mapped_column(Text)
+    github_url: Mapped[str | None] = mapped_column(Text)
+    portfolio_url: Mapped[str | None] = mapped_column(Text)
+
+    contact_email: Mapped[str | None] = mapped_column(Text)
+    contact_phone: Mapped[str | None] = mapped_column(Text)
+    share_email: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    share_phone: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+    agent_language: Mapped[str] = mapped_column(Text, nullable=False, server_default="es")
+    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    is_searchable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+    profile_embedding: Mapped[list[float] | None] = mapped_column(Vector(512))
+
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("work_mode in ('remote','hybrid','onsite')", name="candidates_work_mode_check"),
+        CheckConstraint("agent_language in ('es','en')", name="candidates_agent_language_check"),
+        CheckConstraint("status in ('draft','processing','ready','error')", name="candidates_status_check"),
+        Index("candidates_slug_idx", "slug"),
+        Index(
+            "candidates_is_searchable_work_mode_location_country_idx",
+            "is_searchable", "work_mode", "location_country",
+        ),
+        Index("candidates_skills_idx", "skills", postgresql_using="gin"),
+        Index(
+            "candidates_profile_embedding_idx",
+            "profile_embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"profile_embedding": "vector_cosine_ops"},
+        ),
+        {"schema": "public"},
+    )
+
+
+class CVDocument(Base):
+    __tablename__ = "cv_documents"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    r2_key: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_count: Mapped[int | None] = mapped_column(Integer)
+    extracted: Mapped[dict | None] = mapped_column(JSONB)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="uploaded")
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("status in ('uploaded','parsing','parsed','failed')", name="cv_documents_status_check"),
+        Index("cv_documents_candidate_id_is_current_idx", "candidate_id", "is_current"),
+        {"schema": "public"},
+    )
+
+
+class CVChunk(Base):
+    __tablename__ = "cv_chunks"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.cv_documents.id", ondelete="CASCADE")
+    )
+    section: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_: Mapped[dict | None] = mapped_column(
+        "metadata", JSONB, server_default=text("'{}'")
+    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(512))
+    token_count: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        Index("cv_chunks_candidate_id_idx", "candidate_id"),
+        Index("cv_chunks_section_idx", "section"),
+        Index(
+            "cv_chunks_embedding_idx",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+        {"schema": "public"},
+    )
+
+
+class QuickQuestion(Base):
+    __tablename__ = "quick_questions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("char_length(question) <= 80", name="quick_questions_question_check"),
+        CheckConstraint("position between 1 and 5", name="quick_questions_position_check"),
+        UniqueConstraint("candidate_id", "position"),
+        {"schema": "public"},
+    )
+
+
+class CandidateTier(Base):
+    __tablename__ = "candidate_tiers"
+
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("public.candidates.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    tier: Mapped[str] = mapped_column(Text, nullable=False, server_default="base")
+    unlocked_by: Mapped[str | None] = mapped_column(Text)
+    referral_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    share_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    donated_total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
+    unlocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("tier in ('base','impulso','alcance')", name="candidate_tiers_tier_check"),
+        CheckConstraint("unlocked_by in ('donation','share','referrals','manual')", name="candidate_tiers_unlocked_by_check"),
+        {"schema": "public"},
+    )
+
+
+class Share(Base):
+    __tablename__ = "shares"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    ref_token: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    channel: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("channel in ('linkedin','x','whatsapp','facebook','copy','other')", name="shares_channel_check"),
+        Index("shares_ref_token_idx", "ref_token"),
+        Index("shares_candidate_id_idx", "candidate_id"),
+        {"schema": "public"},
+    )
+
+
+class ReferralVisit(Base):
+    __tablename__ = "referral_visits"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    share_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.shares.id", ondelete="CASCADE"), nullable=False
+    )
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    visitor_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_valid: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    dwell_ms: Mapped[int | None] = mapped_column(Integer)
+    visit_date: Mapped[date] = mapped_column(
+        Date, nullable=False, server_default=text("current_date")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        Index(
+            "referral_visits_daily_unique",
+            "candidate_id", "visitor_hash", "visit_date",
+            unique=True,
+        ),
+        Index("referral_visits_candidate_id_is_valid_idx", "candidate_id", "is_valid"),
+        {"schema": "public"},
+    )
+
+
+class Contribution(Base):
+    __tablename__ = "contributions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    candidate_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="SET NULL")
+    )
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    external_id: Mapped[str | None] = mapped_column(Text, unique=True)
+    amount: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    currency: Mapped[str | None] = mapped_column(Text, server_default="MXN")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("provider in ('stripe','mercadopago')", name="contributions_provider_check"),
+        {"schema": "public"},
+    )
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    visitor_hash: Mapped[str | None] = mapped_column(Text)
+    langsmith_run: Mapped[str | None] = mapped_column(Text)
+    message_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = {"schema": "public"}
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_ids: Mapped[list[int] | None] = mapped_column(ARRAY(BigInteger))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("role in ('user','assistant')", name="messages_role_check"),
+        Index("messages_conversation_id_created_at_idx", "conversation_id", "created_at"),
+        {"schema": "public"},
+    )
+
+
+class Recruiter(Base):
+    __tablename__ = "recruiters"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("public.profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    company: Mapped[str | None] = mapped_column(Text)
+    plan: Mapped[str] = mapped_column(Text, nullable=False, server_default="free")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("plan in ('free','pro','team')", name="recruiters_plan_check"),
+        {"schema": "public"},
+    )
+
+
+class Search(Base):
+    __tablename__ = "searches"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    recruiter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.recruiters.id", ondelete="CASCADE"), nullable=False
+    )
+    raw_query: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed: Mapped[dict | None] = mapped_column(JSONB)
+    results: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = {"schema": "public"}
+
+
+class ContactRequest(Base):
+    __tablename__ = "contact_requests"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    recruiter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.recruiters.id", ondelete="CASCADE"), nullable=False
+    )
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("status in ('pending','accepted','declined','revoked')", name="contact_requests_status_check"),
+        UniqueConstraint("recruiter_id", "candidate_id"),
+        {"schema": "public"},
+    )

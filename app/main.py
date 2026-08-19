@@ -5,14 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import cv
 from app.core.config import settings
-from app.core.db import pool
+from app.core.db import engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    pool.open()
     yield
-    pool.close()
+    engine.dispose()
 
 
 app = FastAPI(title="Vivae API", lifespan=lifespan)
