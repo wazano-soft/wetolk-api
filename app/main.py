@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import agent, agent_responses, cv
+from app.api import agent, agent_responses, cv, profile, questions
 from app.core.config import settings
 from app.core.db import engine
 
@@ -26,6 +26,8 @@ app.add_middleware(
 app.include_router(cv.router, prefix="/api/cv", tags=["cv"])
 app.include_router(agent.router, prefix="/api/a", tags=["agent"])
 app.include_router(agent_responses.router, prefix="/api/a", tags=["agent-responses"])
+app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
+app.include_router(questions.router, prefix="/api/questions", tags=["questions"])
 
 
 @app.get("/health")
