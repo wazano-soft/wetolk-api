@@ -298,14 +298,23 @@ returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
+declare
+  -- Google manda el nombre real en el metadata. Email/password no pide
+  -- nombre en el signup, así que caemos a la parte del email antes del
+  -- '@' (ej. juanluis@mail.com -> "juanluis") en vez de un literal
+  -- genérico — el usuario lo corrige después en el formulario (RF-04).
+  v_full_name text := coalesce(
+    new.raw_user_meta_data ->> 'full_name',
+    split_part(new.email, '@', 1)
+  );
 begin
   insert into public.profiles (id, full_name)
-  values (new.id, new.raw_user_meta_data ->> 'full_name');
+  values (new.id, v_full_name);
 
   insert into public.candidates (user_id, slug)
   values (
     new.id,
-    lower(regexp_replace(coalesce(new.raw_user_meta_data ->> 'full_name', 'user'), '[^a-zA-Z0-9]+', '-', 'g'))
+    lower(regexp_replace(v_full_name, '[^a-zA-Z0-9]+', '-', 'g'))
       || '-' || substr(gen_random_uuid()::text, 1, 4)
   );
 
