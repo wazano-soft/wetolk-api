@@ -8,6 +8,7 @@ boto3
 
 # Supabase (DB via psycopg, Auth JWT verification)
 supabase
+pyjwt
 
 # PDF extraction
 pymupdf
