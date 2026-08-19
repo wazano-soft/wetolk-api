@@ -20,6 +20,7 @@ _jwks_client = jwt.PyJWKClient(
 class AuthUser:
     id: str
     email: str | None
+    full_name: str | None
 
 
 def _decode(token: str) -> dict:
@@ -42,7 +43,11 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> AuthUser:
     payload = _decode(credentials.credentials)
-    return AuthUser(id=payload["sub"], email=payload.get("email"))
+    return AuthUser(
+        id=payload["sub"],
+        email=payload.get("email"),
+        full_name=(payload.get("user_metadata") or {}).get("full_name"),
+    )
 
 
 def get_current_user_id(

@@ -27,8 +27,9 @@ def _get_candidate(db: Session, user: AuthUser) -> Candidate:
     # distinto (local en dev, u otro proyecto Supabase), eso no siempre
     # se cumple — FastAPI se hace cargo acá la primera vez que hace
     # falta, sin pisar nada si el trigger ya lo creó.
-    full_name = (user.email or "user").split("@", 1)[0]
-    slug = f"{re.sub(r'[^a-zA-Z0-9]+', '-', full_name).lower()}-{uuid.uuid4().hex[:4]}"
+    full_name = user.full_name or (user.email or "user").split("@", 1)[0]
+    slug_base = re.sub(r"[^a-zA-Z0-9]+", "-", full_name).lower()
+    slug = f"{slug_base}-{uuid.uuid4().hex[:4]}"
 
     if db.get(Profile, user.id) is None:
         db.add(Profile(id=user.id, full_name=full_name))
