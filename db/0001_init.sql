@@ -173,12 +173,14 @@ create table public.referral_visits (
   visitor_hash  text not null,                 -- sha256(ip + ua + salt diaria)
   is_valid      boolean not null default false,-- true tras 10s de permanencia
   dwell_ms      int,
+  visit_date    date not null default current_date,
   created_at    timestamptz not null default now()
 );
 
--- una visita válida por visitante por candidato por día
+-- una visita válida por visitante por candidato por día (columna real, no
+-- expresión sobre created_at: ese cast no es IMMUTABLE, ver 03-documento-tecnico §3)
 create unique index referral_visits_daily_unique
-  on public.referral_visits (candidate_id, visitor_hash, (created_at::date));
+  on public.referral_visits (candidate_id, visitor_hash, visit_date);
 
 create index on public.referral_visits (candidate_id, is_valid);
 
