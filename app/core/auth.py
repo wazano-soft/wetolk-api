@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -14,13 +16,16 @@ _jwks_client = jwt.PyJWKClient(
 )
 
 
-def get_current_user_id(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> str:
-    token = credentials.credentials
+@dataclass
+class AuthUser:
+    id: str
+    email: str | None
+
+
+def _decode(token: str) -> dict:
     try:
         signing_key = _jwks_client.get_signing_key_from_jwt(token)
-        payload = jwt.decode(
+        return jwt.decode(
             token,
             signing_key.key,
             algorithms=["ES256", "RS256"],
@@ -32,4 +37,15 @@ def get_current_user_id(
             detail="Invalid or expired token",
         ) from exc
 
-    return payload["sub"]
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> AuthUser:
+    payload = _decode(credentials.credentials)
+    return AuthUser(id=payload["sub"], email=payload.get("email"))
+
+
+def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> str:
+    return _decode(credentials.credentials)["sub"]

@@ -7,9 +7,18 @@ create extension if not exists pg_trgm;   -- búsqueda por texto (híbrida)
 
 -- ─────────────────────────────────────────────────────────────
 -- Perfil base (1:1 con auth.users)
+--
+-- SIN foreign key a auth.users a propósito: con Auth en Supabase y datos
+-- en un Postgres distinto (local en dev, o incluso otro proyecto Supabase),
+-- auth.users no siempre vive en esta misma base. La identidad se verifica
+-- por firma del JWT (JWKS) en cada request, no por integridad referencial.
+-- FastAPI aprovisiona esta fila de forma perezosa si no existe (ver
+-- app/api/cv.py::_get_candidate) cuando el trigger de abajo no pudo correr
+-- por estar en bases distintas. El borrado de cuenta es un endpoint
+-- explícito (RNF-03), no depende de on delete cascade.
 -- ─────────────────────────────────────────────────────────────
 create table public.profiles (
-  id          uuid primary key references auth.users on delete cascade,
+  id          uuid primary key,  -- id de auth.users, SIN foreign key (ver nota abajo)
   role        text not null default 'candidate'
               check (role in ('candidate','recruiter','admin')),
   full_name   text,

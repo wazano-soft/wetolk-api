@@ -6,8 +6,8 @@ pydantic-settings==2.15.0
 # Storage (R2, S3-compatible)
 boto3
 
-# Supabase (DB via psycopg, Auth JWT verification)
-supabase
+# DB access (direto a Postgres, local en dev / Supabase en prod) + Auth
+psycopg[binary,pool]
 pyjwt
 
 # PDF extraction

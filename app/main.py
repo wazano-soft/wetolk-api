@@ -1,9 +1,21 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import cv
 from app.core.config import settings
+from app.core.db import pool
 
-app = FastAPI(title="Vivae API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    pool.open()
+    yield
+    pool.close()
+
+
+app = FastAPI(title="Vivae API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -11,6 +23,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(cv.router, prefix="/api/cv", tags=["cv"])
 
 
 @app.get("/health")
