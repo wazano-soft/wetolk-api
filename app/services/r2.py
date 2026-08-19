@@ -23,6 +23,12 @@ def cv_key(storage_token: str, ts: str | None = None) -> str:
 
 
 def create_upload_url(key: str, expires_in: int = 300) -> str:
+    # NOTA: un presigned PUT no puede acotar el tamaño del body (eso es
+    # solo de presigned POST, vía la condición content-length-range). El
+    # límite de 5MB hoy se aplica recién en /api/cv/process, después de
+    # subido -- alguien con esta URL puede igual poner un archivo más
+    # grande en el bucket. Si esto importa de verdad, migrar a
+    # generate_presigned_post con esa condición.
     return _client.generate_presigned_url(
         "put_object",
         Params={
@@ -40,6 +46,10 @@ def create_download_url(key: str, expires_in: int = 300) -> str:
         Params={"Bucket": settings.r2_bucket, "Key": key},
         ExpiresIn=expires_in,
     )
+
+
+def get_object_size(key: str) -> int:
+    return _client.head_object(Bucket=settings.r2_bucket, Key=key)["ContentLength"]
 
 
 def download_object(key: str) -> bytes:

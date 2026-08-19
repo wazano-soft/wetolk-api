@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import AuthUser, get_current_user
@@ -31,18 +32,30 @@ def _get_candidate(db: Session, user: AuthUser) -> Candidate:
     slug_base = re.sub(r"[^a-zA-Z0-9]+", "-", full_name).lower()
     slug = f"{slug_base}-{uuid.uuid4().hex[:4]}"
 
-    if db.get(Profile, user.id) is None:
-        db.add(Profile(id=user.id, full_name=full_name))
-        db.flush()  # profiles antes que candidates: sin relationship()
-        # declarada entre las dos, SQLAlchemy no infiere el orden de
-        # inserción solo del ForeignKey crudo -- lo forzamos a mano.
+    try:
+        if db.get(Profile, user.id) is None:
+            db.add(Profile(id=user.id, full_name=full_name))
+            db.flush()  # profiles antes que candidates: sin relationship()
+            # declarada entre las dos, SQLAlchemy no infiere el orden de
+            # inserción solo del ForeignKey crudo -- lo forzamos a mano.
 
-    candidate = Candidate(user_id=user.id, slug=slug)
-    db.add(candidate)
-    db.flush()  # necesitamos candidate.id antes del insert de abajo
+        candidate = Candidate(user_id=user.id, slug=slug)
+        db.add(candidate)
+        db.flush()  # necesitamos candidate.id antes del insert de abajo
 
-    db.add(CandidateTier(candidate_id=candidate.id))
-    return candidate
+        db.add(CandidateTier(candidate_id=candidate.id))
+        db.flush()
+        return candidate
+    except IntegrityError:
+        # Dos requests concurrentes de un usuario nuevo (ej. status +
+        # upload-url al cargar la página) pueden pisarse acá: las dos ven
+        # candidate is None y las dos intentan provisionar. La que pierde
+        # la carrera cae acá -- descarta su intento y usa el que ganó.
+        db.rollback()
+        candidate = db.scalar(select(Candidate).where(Candidate.user_id == user.id))
+        if candidate is None:
+            raise
+        return candidate
 
 
 class UploadUrlResponse(BaseModel):
@@ -76,9 +89,14 @@ def process_cv(
 ) -> ProcessResponse:
     candidate = _get_candidate(db, user)
 
-    pdf_bytes = r2.download_object(body.r2_key)
-    if len(pdf_bytes) > r2.MAX_PDF_SIZE_BYTES:
+    # Chequeo por HEAD antes de bajar el body entero -- si alguien subió un
+    # archivo grande a través de la URL firmada (que no acota tamaño, ver
+    # nota en r2.create_upload_url), no queremos cargarlo completo en
+    # memoria solo para rechazarlo después.
+    if r2.get_object_size(body.r2_key) > r2.MAX_PDF_SIZE_BYTES:
         raise HTTPException(status_code=400, detail="PDF exceeds 5MB")
+
+    pdf_bytes = r2.download_object(body.r2_key)
 
     # RF-02: reemplazar CV -> soft delete de la version anterior, se crea
     # una fila nueva en vez de pisar la existente.
@@ -102,6 +120,12 @@ def process_cv(
         document.status = "failed"
         document.error_message = "PDF sin texto extraíble (probable escaneo sin OCR)"
         candidate.status = "error"
+        # get_db hace rollback de toda la sesión ante cualquier excepción
+        # (app/core/db.py) -- sin este commit acá, el HTTPException de abajo
+        # dispara ese rollback y se pierde el estado de fallo que acabamos
+        # de setear. GET /api/cv/status quedaría mostrando el status viejo,
+        # sin rastro del error.
+        db.commit()
         raise HTTPException(
             status_code=422,
             detail="El PDF no tiene texto extraíble. Completá el formulario manual.",

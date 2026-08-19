@@ -73,7 +73,20 @@ def prepare_turn(
             except ValueError:
                 conversation_id = None
 
-        conversation = db.get(Conversation, conversation_id) if conversation_id else None
+        # El conversation_id lo manda el cliente sin autenticar -- si no
+        # filtramos también por candidate_id, alguien podría pasar el id de
+        # una conversación de OTRO candidato (visto en una respuesta previa,
+        # o adivinado) y colarle mensajes a ese hilo ajeno mientras el
+        # sistema le contesta con el CV de este candidato.
+        conversation = (
+            db.scalar(
+                select(Conversation).where(
+                    Conversation.id == conversation_id, Conversation.candidate_id == candidate.id
+                )
+            )
+            if conversation_id
+            else None
+        )
         if conversation is None:
             conversation = Conversation(candidate_id=candidate.id)
             db.add(conversation)

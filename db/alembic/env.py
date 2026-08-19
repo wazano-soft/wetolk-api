@@ -11,6 +11,7 @@ from alembic import context
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core.config import settings  # noqa: E402
+from app.core.db import sqlalchemy_url  # noqa: E402
 from app.models import Base  # noqa: E402
 
 # this is the Alembic Config object, which provides
@@ -19,12 +20,9 @@ config = context.config
 
 # DATABASE_URL sale de nuestro Settings (mismo que usa el resto de la app),
 # no del alembic.ini -- así apunta siempre a lo que diga api/.env, sin
-# duplicar la URL en dos lugares. Forzamos +psycopg (v3) explícito porque
-# solo tenemos instalado psycopg, no psycopg2.
-_db_url = settings.database_url
-if _db_url.startswith("postgresql://"):
-    _db_url = _db_url.replace("postgresql://", "postgresql+psycopg://", 1)
-config.set_main_option("sqlalchemy.url", _db_url)
+# duplicar la URL en dos lugares. Mismo rewrite de driver (+psycopg) que
+# usa app/core/db.py, importado de ahí en vez de reimplementado acá.
+config.set_main_option("sqlalchemy.url", sqlalchemy_url(settings.database_url))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

@@ -48,9 +48,3 @@ def get_current_user(
         email=payload.get("email"),
         full_name=(payload.get("user_metadata") or {}).get("full_name"),
     )
-
-
-def get_current_user_id(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> str:
-    return _decode(credentials.credentials)["sub"]
