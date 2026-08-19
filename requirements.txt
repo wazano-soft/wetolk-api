@@ -12,11 +12,14 @@ supabase
 # PDF extraction
 pymupdf
 
-# LLM providers — ambos instalados, se elige uno en runtime vía LLM_PROVIDER
-openai
-google-genai
+# LLM providers vía LangChain — misma interfaz (BaseChatModel / Embeddings)
+# para los dos, se elige uno en runtime vía LLM_PROVIDER
+langchain-core
+langchain-openai
+langchain-google-genai
+numpy
 
-# Observabilidad
+# Observabilidad — LangSmith traza automático al usar LangChain
 langsmith
 
 # Uploads multipart
