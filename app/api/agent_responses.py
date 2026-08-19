@@ -62,18 +62,18 @@ def create_response(slug: str, body: ResponsesRequest, request: Request):
     client_ip = request.client.host if request.client else "unknown"
     user_text = _last_user_text(body.input)
 
-    # previous_response_id se mapea 1:1 a nuestro conversation_id -- mismo
-    # concepto (continuar un hilo previo), dos nombres distintos.
+    # previous_response_id se mapea 1:1 al token de nuestra conversación --
+    # mismo concepto (continuar un hilo previo), dos nombres distintos.
     ctx = prepare_turn(slug, client_ip, user_text, body.previous_response_id)
 
-    response_id = str(ctx.conversation_id)
+    response_id = str(ctx.conversation_token)
     item_id = f"msg_{uuid.uuid4().hex[:24]}"
 
     if not body.stream:
         model = get_chat_model(temperature=0.3)
         result = model.invoke([("system", ctx.system_prompt), ("human", user_text)])
         text = extract_text_from_content(result.content)
-        save_assistant_message(ctx.conversation_id, text)
+        save_assistant_message(ctx.conversation_pk, text)
         return JSONResponse(
             {
                 "id": response_id,
@@ -121,7 +121,7 @@ def create_response(slug: str, body: ResponsesRequest, request: Request):
                     {"item_id": item_id, "content_index": 0, "delta": token},
                 )
 
-        save_assistant_message(ctx.conversation_id, full_text)
+        save_assistant_message(ctx.conversation_pk, full_text)
 
         yield emit(
             "response.output_text.done",

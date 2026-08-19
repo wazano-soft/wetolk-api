@@ -33,11 +33,12 @@ def check_rate_limit(ip: str, slug: str) -> None:
 @dataclass
 class TurnContext:
     system_prompt: str
-    conversation_id: uuid.UUID
+    conversation_pk: int  # id bigint interno -- solo para la FK de Message
+    conversation_token: uuid.UUID  # lo que se expone/recibe del cliente
 
 
 def prepare_turn(
-    slug: str, client_ip: str, message: str, conversation_id_raw: str | None
+    slug: str, client_ip: str, message: str, conversation_token_raw: str | None
 ) -> TurnContext:
     """Resuelve el candidato, arma el system prompt con el CV completo en
     contexto (atajo de MVP, §5) y persiste el mensaje del usuario. Común a
@@ -66,25 +67,26 @@ def prepare_turn(
         cv_context = build_cv_context(document.extracted)
         agent_language = candidate.agent_language
 
-        conversation_id: uuid.UUID | None = None
-        if conversation_id_raw:
+        conversation_token: uuid.UUID | None = None
+        if conversation_token_raw:
             try:
-                conversation_id = uuid.UUID(conversation_id_raw)
+                conversation_token = uuid.UUID(conversation_token_raw)
             except ValueError:
-                conversation_id = None
+                conversation_token = None
 
-        # El conversation_id lo manda el cliente sin autenticar -- si no
-        # filtramos también por candidate_id, alguien podría pasar el id de
-        # una conversación de OTRO candidato (visto en una respuesta previa,
-        # o adivinado) y colarle mensajes a ese hilo ajeno mientras el
-        # sistema le contesta con el CV de este candidato.
+        # El token lo manda el cliente sin autenticar -- si no filtramos
+        # también por candidate_id, alguien podría pasar el token de una
+        # conversación de OTRO candidato (visto en una respuesta previa, o
+        # adivinado) y colarle mensajes a ese hilo ajeno mientras el sistema
+        # le contesta con el CV de este candidato.
         conversation = (
             db.scalar(
                 select(Conversation).where(
-                    Conversation.id == conversation_id, Conversation.candidate_id == candidate.id
+                    Conversation.token == conversation_token,
+                    Conversation.candidate_id == candidate.id,
                 )
             )
-            if conversation_id
+            if conversation_token
             else None
         )
         if conversation is None:
@@ -94,7 +96,8 @@ def prepare_turn(
 
         db.add(Message(conversation_id=conversation.id, role="user", content=message))
         conversation.message_count = (conversation.message_count or 0) + 1
-        conversation_id = conversation.id
+        conversation_pk = conversation.id
+        conversation_token = conversation.token
         db.commit()
 
     system_prompt = AGENT_SYSTEM_PROMPT.format(
@@ -103,10 +106,14 @@ def prepare_turn(
         cv_context=cv_context,
         language="español" if agent_language == "es" else "English",
     )
-    return TurnContext(system_prompt=system_prompt, conversation_id=conversation_id)
+    return TurnContext(
+        system_prompt=system_prompt,
+        conversation_pk=conversation_pk,
+        conversation_token=conversation_token,
+    )
 
 
-def save_assistant_message(conversation_id: uuid.UUID, content: str) -> None:
+def save_assistant_message(conversation_pk: int, content: str) -> None:
     with SessionLocal() as db:
-        db.add(Message(conversation_id=conversation_id, role="assistant", content=content))
+        db.add(Message(conversation_id=conversation_pk, role="assistant", content=content))
         db.commit()

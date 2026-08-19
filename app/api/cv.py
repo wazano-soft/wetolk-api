@@ -143,7 +143,7 @@ def process_cv(
     candidate.interests = extract.interests
     candidate.status = "ready"
 
-    return ProcessResponse(document_id=str(document.id), status="ready")
+    return ProcessResponse(document_id=str(document.token), status="ready")
 
 
 class StatusResponse(BaseModel):

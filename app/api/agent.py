@@ -68,7 +68,7 @@ def chat(slug: str, body: ChatRequest, request: Request) -> StreamingResponse:
                 full_response += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 
-        save_assistant_message(ctx.conversation_id, full_response)
-        yield f"data: {json.dumps({'type': 'done', 'conversation_id': str(ctx.conversation_id), 'sources': []})}\n\n"
+        save_assistant_message(ctx.conversation_pk, full_response)
+        yield f"data: {json.dumps({'type': 'done', 'conversation_id': str(ctx.conversation_token), 'sources': []})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

@@ -32,6 +32,10 @@ def _uuid_pk():
     )
 
 
+def _bigserial_pk():
+    return mapped_column(BigInteger, primary_key=True, autoincrement=True)
+
+
 class Profile(Base):
     __tablename__ = "profiles"
 
@@ -56,7 +60,17 @@ class Profile(Base):
 class Candidate(Base):
     __tablename__ = "candidates"
 
-    id: Mapped[uuid.UUID] = _uuid_pk()
+    # bigserial a propósito: id interno para joins/FKs, nunca se expone al
+    # front. `token` es el identificador opaco y estable para exponer en
+    # APIs (no muta si el candidato cambia el slug). OJO: no confundir con
+    # `storage_token` acá abajo -- ese es otro campo, tiene que quedar
+    # 100% privado y server-side (solo para armar paths de R2), nunca se
+    # expone. Nombres parecidos, seguridad opuesta. Ver regla de
+    # plataforma en 03-documento-tecnico.md §1.
+    id: Mapped[int] = _bigserial_pk()
+    token: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, unique=True, server_default=text("gen_random_uuid()")
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("public.profiles.id", ondelete="CASCADE"),
@@ -135,9 +149,12 @@ class Candidate(Base):
 class CVDocument(Base):
     __tablename__ = "cv_documents"
 
-    id: Mapped[uuid.UUID] = _uuid_pk()
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = _bigserial_pk()
+    token: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, unique=True, server_default=text("gen_random_uuid()")
+    )
+    candidate_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
     )
     r2_key: Mapped[str] = mapped_column(Text, nullable=False)
     filename: Mapped[str] = mapped_column(Text, nullable=False)
@@ -162,11 +179,11 @@ class CVChunk(Base):
     __tablename__ = "cv_chunks"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    candidate_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
     )
-    document_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.cv_documents.id", ondelete="CASCADE")
+    document_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("public.cv_documents.id", ondelete="CASCADE")
     )
     section: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(Text)
@@ -197,8 +214,8 @@ class QuickQuestion(Base):
     __tablename__ = "quick_questions"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    candidate_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
     )
     question: Mapped[str] = mapped_column(Text, nullable=False)
     position: Mapped[int] = mapped_column(SmallInteger, nullable=False)
@@ -217,8 +234,8 @@ class QuickQuestion(Base):
 class CandidateTier(Base):
     __tablename__ = "candidate_tiers"
 
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    candidate_id: Mapped[int] = mapped_column(
+        BigInteger,
         ForeignKey("public.candidates.id", ondelete="CASCADE"),
         primary_key=True,
     )
@@ -243,8 +260,8 @@ class Share(Base):
     __tablename__ = "shares"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    candidate_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
     )
     ref_token: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     channel: Mapped[str] = mapped_column(Text, nullable=False)
@@ -267,8 +284,8 @@ class ReferralVisit(Base):
     share_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("public.shares.id", ondelete="CASCADE"), nullable=False
     )
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    candidate_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
     )
     visitor_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_valid: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
@@ -295,8 +312,8 @@ class Contribution(Base):
     __tablename__ = "contributions"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    candidate_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="SET NULL")
+    candidate_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("public.candidates.id", ondelete="SET NULL")
     )
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     external_id: Mapped[str | None] = mapped_column(Text, unique=True)
@@ -315,9 +332,12 @@ class Contribution(Base):
 class Conversation(Base):
     __tablename__ = "conversations"
 
-    id: Mapped[uuid.UUID] = _uuid_pk()
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = _bigserial_pk()
+    token: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, unique=True, server_default=text("gen_random_uuid()")
+    )
+    candidate_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
     )
     visitor_hash: Mapped[str | None] = mapped_column(Text)
     langsmith_run: Mapped[str | None] = mapped_column(Text)
@@ -333,8 +353,8 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.conversations.id", ondelete="CASCADE"), nullable=False
+    conversation_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.conversations.id", ondelete="CASCADE"), nullable=False
     )
     role: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -396,8 +416,8 @@ class ContactRequest(Base):
     recruiter_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("public.recruiters.id", ondelete="CASCADE"), nullable=False
     )
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    candidate_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
     )
     message: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
