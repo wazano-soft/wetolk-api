@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import agent, agent_responses, cv, profile, questions, share, stats
+from app.api import account, agent, agent_responses, cv, profile, questions, share, stats
 from app.core.config import settings
 from app.core.db import engine
 
@@ -30,6 +30,7 @@ app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
 app.include_router(questions.router, prefix="/api/questions", tags=["questions"])
 app.include_router(share.router, prefix="/api", tags=["share"])
 app.include_router(stats.router, prefix="/api", tags=["stats"])
+app.include_router(account.router, prefix="/api/account", tags=["account"])
 
 
 @app.get("/health")

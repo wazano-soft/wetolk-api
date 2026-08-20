@@ -55,3 +55,18 @@ def get_object_size(key: str) -> int:
 def download_object(key: str) -> bytes:
     obj = _client.get_object(Bucket=settings.r2_bucket, Key=key)
     return obj["Body"].read()
+
+
+def delete_prefix(prefix: str) -> int:
+    """Borra todos los objetos bajo un prefijo (RNF-03: borrado de cuenta).
+    list_objects_v2 pagina de a 1000 -- delete_objects también tiene un
+    límite de 1000 claves por llamada, así que se borra por página."""
+    deleted = 0
+    paginator = _client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=settings.r2_bucket, Prefix=prefix):
+        keys = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+        if not keys:
+            continue
+        _client.delete_objects(Bucket=settings.r2_bucket, Delete={"Objects": keys})
+        deleted += len(keys)
+    return deleted
