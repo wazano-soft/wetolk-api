@@ -1,6 +1,5 @@
 import json
 from collections.abc import Generator
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -10,11 +9,17 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.db import SessionLocal
 from app.core.http import get_client_ip
-from app.models import Candidate, CandidateTier, Profile, ReferralVisit, Share
+from app.models import Profile, ReferralVisit, Share
 from app.services.agent_prompt import extract_text_from_content
-from app.services.agent_turn import prepare_turn, save_assistant_message
+from app.services.agent_turn import get_public_candidate, prepare_turn, save_assistant_message
 from app.services.llm import get_chat_model
-from app.services.referral import ALCANCE_VISIT_THRESHOLD, is_bot, visitor_hash
+from app.services.referral import (
+    ALCANCE_VISIT_THRESHOLD,
+    advance_tier,
+    get_or_create_tier,
+    is_bot,
+    visitor_hash,
+)
 
 router = APIRouter()
 
@@ -34,11 +39,7 @@ class PublicProfileResponse(BaseModel):
 @router.get("/{slug}", response_model=PublicProfileResponse)
 def get_public_profile(slug: str) -> PublicProfileResponse:
     with SessionLocal() as db:
-        candidate = db.scalar(
-            select(Candidate).where(Candidate.slug == slug, Candidate.is_public.is_(True))
-        )
-        if candidate is None:
-            raise HTTPException(status_code=404, detail="Not found")
+        candidate = get_public_candidate(db, slug)
         profile = db.get(Profile, candidate.user_id)
         return PublicProfileResponse(
             slug=candidate.slug,
@@ -91,11 +92,7 @@ class VisitResponse(BaseModel):
 @router.post("/{slug}/visit", response_model=VisitResponse)
 def register_visit(slug: str, body: VisitRequest, request: Request) -> VisitResponse:
     with SessionLocal() as db:
-        candidate = db.scalar(
-            select(Candidate).where(Candidate.slug == slug, Candidate.is_public.is_(True))
-        )
-        if candidate is None:
-            raise HTTPException(status_code=404, detail="Not found")
+        candidate = get_public_candidate(db, slug)
 
         share = db.scalar(
             select(Share).where(Share.ref_token == body.ref, Share.candidate_id == candidate.id)
@@ -126,23 +123,18 @@ def register_visit(slug: str, body: VisitRequest, request: Request) -> VisitResp
             )
             db.flush()
         except IntegrityError:
-            # ya existe una visita válida de este visitante hoy para este
-            # candidato (constraint referral_visits_daily_unique) -- no es
-            # un error, es el caso esperado de deduplicación.
+            # ya existe una visita VÁLIDA de este visitante hoy para este
+            # candidato (el índice referral_visits_daily_unique es parcial,
+            # solo cubre is_valid=true) -- no es un error, es el caso
+            # esperado de deduplicación.
             db.rollback()
             return VisitResponse(registered=False)
 
         if valid:
-            tier = db.get(CandidateTier, candidate.id)
-            if tier is None:
-                tier = CandidateTier(candidate_id=candidate.id)
-                db.add(tier)
-                db.flush()
+            tier = get_or_create_tier(db, candidate.id)
             tier.referral_count += 1
-            if tier.tier != "alcance" and tier.referral_count >= ALCANCE_VISIT_THRESHOLD:
-                tier.tier = "alcance"
-                tier.unlocked_by = "referrals"
-                tier.unlocked_at = datetime.now(timezone.utc)
+            if tier.referral_count >= ALCANCE_VISIT_THRESHOLD:
+                advance_tier(tier, "alcance", "referrals")
 
         db.commit()
         return VisitResponse(registered=True, valid=valid)

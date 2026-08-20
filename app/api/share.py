@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,19 +8,16 @@ from app.api.cv import _get_candidate
 from app.core.auth import AuthUser, get_current_user
 from app.core.config import settings
 from app.core.db import get_db
-from app.models import CandidateTier, Share
-from app.services.referral import IMPULSO_SHARE_THRESHOLD, new_ref_token, share_text
+from app.services.referral import (
+    IMPULSO_SHARE_THRESHOLD,
+    advance_tier,
+    get_or_create_tier,
+    new_ref_token,
+    share_text,
+)
+from app.models import Share
 
 router = APIRouter()
-
-
-def _get_tier(db: Session, candidate_id: int) -> CandidateTier:
-    tier = db.get(CandidateTier, candidate_id)
-    if tier is None:
-        tier = CandidateTier(candidate_id=candidate_id)
-        db.add(tier)
-        db.flush()
-    return tier
 
 
 class TierResponse(BaseModel):
@@ -36,7 +32,7 @@ def get_tier(
     user: AuthUser = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> TierResponse:
     candidate = _get_candidate(db, user)
-    tier = _get_tier(db, candidate.id)
+    tier = get_or_create_tier(db, candidate.id)
     return TierResponse(
         tier=tier.tier,
         share_count=tier.share_count,
@@ -68,12 +64,10 @@ def create_share(
     # RF-08: al tercer share, desbloqueo inmediato a "impulso", sin
     # verificar nada -- la fricción de verificar cuesta más que la trampa
     # (ver doc técnico §8).
-    tier = _get_tier(db, candidate.id)
+    tier = get_or_create_tier(db, candidate.id)
     tier.share_count += 1
-    if tier.tier == "base" and tier.share_count >= IMPULSO_SHARE_THRESHOLD:
-        tier.tier = "impulso"
-        tier.unlocked_by = "share"
-        tier.unlocked_at = datetime.now(timezone.utc)
+    if tier.share_count >= IMPULSO_SHARE_THRESHOLD:
+        advance_tier(tier, "impulso", "share")
 
     db.flush()
     return ShareResponse(

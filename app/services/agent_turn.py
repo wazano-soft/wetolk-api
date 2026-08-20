@@ -5,10 +5,23 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
 from app.models import Candidate, Conversation, CVDocument, Message, Profile
 from app.services.agent_prompt import AGENT_SYSTEM_PROMPT, build_cv_context
+
+
+def get_public_candidate(db: Session, slug: str) -> Candidate:
+    """Candidato con perfil público activo, o 404. Compartido por todos
+    los endpoints de /api/a/{slug} -- antes duplicado en tres lugares
+    (get_public_profile, register_visit, y acá mismo)."""
+    candidate = db.scalar(
+        select(Candidate).where(Candidate.slug == slug, Candidate.is_public.is_(True))
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return candidate
 
 # RF-06: 20 mensajes por IP por hora por perfil. En memoria alcanza para el
 # MVP (una sola instancia de Railway) -- si se escala a 2+ instancias hay
@@ -46,11 +59,7 @@ def prepare_turn(
     check_rate_limit(client_ip, slug)
 
     with SessionLocal() as db:
-        candidate = db.scalar(
-            select(Candidate).where(Candidate.slug == slug, Candidate.is_public.is_(True))
-        )
-        if candidate is None:
-            raise HTTPException(status_code=404, detail="Not found")
+        candidate = get_public_candidate(db, slug)
 
         profile = db.get(Profile, candidate.user_id)
         full_name = (profile.full_name if profile else None) or candidate.slug

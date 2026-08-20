@@ -90,6 +90,15 @@ class ProfileUpdate(BaseModel):
     is_searchable: bool | None = None
 
 
+# Columnas NOT NULL en candidates -- un null explícito en el body para
+# cualquiera de estas rompía en el commit con un IntegrityError sin
+# capturar (500 crudo). full_name no está acá porque profiles.full_name
+# sí admite null: un candidato puede querer borrarlo.
+_NOT_NULLABLE_FIELDS = {
+    "skills", "interests", "agent_language", "is_public", "is_searchable",
+}
+
+
 @router.patch("", response_model=ProfileResponse)
 def update_profile(
     body: ProfileUpdate,
@@ -99,14 +108,41 @@ def update_profile(
     candidate = _get_candidate(db, user)
 
     updates = body.model_dump(exclude_unset=True, exclude={"full_name"})
+    for field in _NOT_NULLABLE_FIELDS & updates.keys():
+        if updates[field] is None:
+            raise HTTPException(status_code=422, detail=f"{field} cannot be null")
     for field, value in updates.items():
         setattr(candidate, field, value)
 
-    if body.full_name is not None:
-        profile = db.get(Profile, user.id)
+    profile = db.get(Profile, user.id)
+    # model_fields_set (no "is not None"): un full_name explícito en null
+    # tiene que poder borrar el nombre, no quedar ignorado en silencio.
+    if "full_name" in body.model_fields_set:
         if profile is None:
             raise HTTPException(status_code=404, detail="Profile not found")
         profile.full_name = body.full_name
 
     db.flush()
-    return get_profile(user=user, db=db)
+    return ProfileResponse(
+        slug=candidate.slug,
+        full_name=profile.full_name if profile else None,
+        headline=candidate.headline,
+        degree=candidate.degree,
+        overview=candidate.overview,
+        skills=candidate.skills,
+        interests=candidate.interests,
+        work_mode=candidate.work_mode,
+        location_city=candidate.location_city,
+        location_country=candidate.location_country,
+        willing_relocate=bool(candidate.willing_relocate),
+        salary_min=candidate.salary_min,
+        salary_max=candidate.salary_max,
+        salary_currency=candidate.salary_currency,
+        linkedin_url=candidate.linkedin_url,
+        github_url=candidate.github_url,
+        portfolio_url=candidate.portfolio_url,
+        agent_language=candidate.agent_language,
+        is_public=candidate.is_public,
+        is_searchable=candidate.is_searchable,
+        status=candidate.status,
+    )

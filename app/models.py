@@ -298,10 +298,17 @@ class ReferralVisit(Base):
     )
 
     __table_args__ = (
+        # Parcial: solo dedupea visitas VÁLIDAS. Si no fuera parcial, una
+        # visita inválida temprano en el día (rebote < 10s) ocuparía la
+        # clave y bloquearía -- vía el mismo IntegrityError que el código
+        # trata como "ya contada" -- que una visita genuinamente válida
+        # del mismo visitante más tarde ese día se llegue a registrar,
+        # perdiendo el crédito de referido para siempre ese día.
         Index(
             "referral_visits_daily_unique",
             "candidate_id", "visitor_hash", "visit_date",
             unique=True,
+            postgresql_where=text("is_valid"),
         ),
         Index("referral_visits_candidate_id_is_valid_idx", "candidate_id", "is_valid"),
         {"schema": "public"},
