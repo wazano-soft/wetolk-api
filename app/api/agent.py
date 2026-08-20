@@ -39,6 +39,7 @@ class PublicProfileResponse(BaseModel):
     location_city: str | None
     location_country: str | None
     quick_questions: list[str]
+    tier: str
 
 
 @router.get("/{slug}", response_model=PublicProfileResponse)
@@ -51,6 +52,13 @@ def get_public_profile(slug: str) -> PublicProfileResponse:
             .where(QuickQuestion.candidate_id == candidate.id)
             .order_by(QuickQuestion.position)
         ).all()
+        # get_or_create_tier puede insertar una fila nueva -- SessionLocal()
+        # a secas no auto-commitea como sí lo hace la dependencia get_db(),
+        # así que sin este commit el insert se pierde en el rollback
+        # implícito al cerrar la sesión.
+        tier = get_or_create_tier(db, candidate.id)
+        tier_value = tier.tier
+        db.commit()
         return PublicProfileResponse(
             slug=candidate.slug,
             full_name=profile.full_name if profile else None,
@@ -66,6 +74,7 @@ def get_public_profile(slug: str) -> PublicProfileResponse:
             location_city=candidate.location_city,
             location_country=candidate.location_country,
             quick_questions=list(quick_questions),
+            tier=tier_value,
         )
 
 
