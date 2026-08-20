@@ -12,6 +12,7 @@ from app.core.db import get_db
 from app.models import Candidate, CandidateTier, CVDocument, Profile
 from app.services import r2
 from app.services.cv_extraction import extract_cv
+from app.services.embeddings import get_embeddings
 from app.services.pdf import UnextractableTextError, extract_text
 
 router = APIRouter()
@@ -142,6 +143,15 @@ def process_cv(
     candidate.skills = extract.skills
     candidate.interests = extract.interests
     candidate.status = "ready"
+
+    # RF-10: embedding a nivel de perfil (no por chunk, ese ya existe para
+    # el chat individual) para que la búsqueda de reclutador pueda rankear
+    # por similitud coseno. Resumen sintético de lo más relevante para
+    # matchear una vacante, no el CV completo.
+    summary_parts = [extract.headline, extract.degree, extract.overview, *extract.skills]
+    summary = " ".join(p for p in summary_parts if p)
+    if summary:
+        candidate.profile_embedding = get_embeddings().embed_query(summary)
 
     return ProcessResponse(document_id=str(document.token), status="ready")
 
