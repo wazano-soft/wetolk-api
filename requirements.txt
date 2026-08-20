@@ -28,3 +28,6 @@ langsmith
 
 # Uploads multipart
 python-multipart
+
+# Donaciones (RF-07)
+stripe

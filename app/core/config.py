@@ -43,5 +43,9 @@ class Settings(BaseSettings):
     public_api_url: str = "http://localhost:8000"
     visit_salt: str = "dev-only-salt-change-in-prod"
 
+    # Stripe (RF-07 — donaciones)
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+
 
 settings = Settings()
