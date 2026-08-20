@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from app.core.http import get_client_ip
 from app.services.agent_prompt import extract_text_from_content
 from app.services.agent_turn import prepare_turn, save_assistant_message
 from app.services.llm import get_chat_model
@@ -59,7 +60,7 @@ def _output_message(item_id: str, text: str, status: str = "completed") -> dict[
 
 @router.post("/{slug}/responses")
 def create_response(slug: str, body: ResponsesRequest, request: Request):
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     user_text = _last_user_text(body.input)
 
     # previous_response_id se mapea 1:1 al token de nuestra conversación --

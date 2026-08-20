@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     rate_limit_chat: str = "15/hour"
     public_api_url: str = "http://localhost:8000"
+    visit_salt: str = "dev-only-salt-change-in-prod"
 
 
 settings = Settings()

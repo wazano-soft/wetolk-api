@@ -1,16 +1,20 @@
 import json
 from collections.abc import Generator
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.db import SessionLocal
-from app.models import Candidate, Profile
-from app.services.agent_turn import prepare_turn, save_assistant_message
+from app.core.http import get_client_ip
+from app.models import Candidate, CandidateTier, Profile, ReferralVisit, Share
 from app.services.agent_prompt import extract_text_from_content
+from app.services.agent_turn import prepare_turn, save_assistant_message
 from app.services.llm import get_chat_model
+from app.services.referral import ALCANCE_VISIT_THRESHOLD, is_bot, visitor_hash
 
 router = APIRouter()
 
@@ -56,7 +60,7 @@ class ChatRequest(BaseModel):
 
 @router.post("/{slug}/chat")
 def chat(slug: str, body: ChatRequest, request: Request) -> StreamingResponse:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     ctx = prepare_turn(slug, client_ip, body.message, body.conversation_id)
 
     def event_stream() -> Generator[str, None, None]:
@@ -72,3 +76,73 @@ def chat(slug: str, body: ChatRequest, request: Request) -> StreamingResponse:
         yield f"data: {json.dumps({'type': 'done', 'conversation_id': str(ctx.conversation_token), 'sources': []})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+class VisitRequest(BaseModel):
+    ref: str
+    dwell_ms: int
+
+
+class VisitResponse(BaseModel):
+    registered: bool
+    valid: bool = False
+
+
+@router.post("/{slug}/visit", response_model=VisitResponse)
+def register_visit(slug: str, body: VisitRequest, request: Request) -> VisitResponse:
+    with SessionLocal() as db:
+        candidate = db.scalar(
+            select(Candidate).where(Candidate.slug == slug, Candidate.is_public.is_(True))
+        )
+        if candidate is None:
+            raise HTTPException(status_code=404, detail="Not found")
+
+        share = db.scalar(
+            select(Share).where(Share.ref_token == body.ref, Share.candidate_id == candidate.id)
+        )
+        if share is None:
+            raise HTTPException(status_code=404, detail="Invalid ref token")
+
+        ip = get_client_ip(request)
+        ua = request.headers.get("user-agent", "")
+        vh = visitor_hash(ip, ua)
+
+        # RF-08: válida a partir de 10s de permanencia real, filtrando bots.
+        # El chequeo de auto-referido (visitor_hash == hash del dueño) que
+        # menciona el doc técnico §8 queda pendiente -- no tenemos forma de
+        # conocer el hash del dueño sin pedirle que visite su propio link
+        # una vez para registrarlo, y el doc tampoco lo especifica.
+        valid = body.dwell_ms >= 10_000 and not is_bot(ua)
+
+        try:
+            db.add(
+                ReferralVisit(
+                    share_id=share.id,
+                    candidate_id=candidate.id,
+                    visitor_hash=vh,
+                    is_valid=valid,
+                    dwell_ms=body.dwell_ms,
+                )
+            )
+            db.flush()
+        except IntegrityError:
+            # ya existe una visita válida de este visitante hoy para este
+            # candidato (constraint referral_visits_daily_unique) -- no es
+            # un error, es el caso esperado de deduplicación.
+            db.rollback()
+            return VisitResponse(registered=False)
+
+        if valid:
+            tier = db.get(CandidateTier, candidate.id)
+            if tier is None:
+                tier = CandidateTier(candidate_id=candidate.id)
+                db.add(tier)
+                db.flush()
+            tier.referral_count += 1
+            if tier.tier != "alcance" and tier.referral_count >= ALCANCE_VISIT_THRESHOLD:
+                tier.tier = "alcance"
+                tier.unlocked_by = "referrals"
+                tier.unlocked_at = datetime.now(timezone.utc)
+
+        db.commit()
+        return VisitResponse(registered=True, valid=valid)
