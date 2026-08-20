@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.db import SessionLocal
 from app.core.http import get_client_ip
-from app.models import Profile, ReferralVisit, Share
+from app.models import Profile, QuickQuestion, ReferralVisit, Share
 from app.services.agent_prompt import extract_text_from_content
 from app.services.agent_turn import get_public_candidate, prepare_turn, save_assistant_message
 from app.services.llm import get_chat_model
@@ -35,6 +35,10 @@ class PublicProfileResponse(BaseModel):
     github_url: str | None
     portfolio_url: str | None
     agent_language: str
+    work_mode: str | None
+    location_city: str | None
+    location_country: str | None
+    quick_questions: list[str]
 
 
 @router.get("/{slug}", response_model=PublicProfileResponse)
@@ -42,6 +46,11 @@ def get_public_profile(slug: str) -> PublicProfileResponse:
     with SessionLocal() as db:
         candidate = get_public_candidate(db, slug)
         profile = db.get(Profile, candidate.user_id)
+        quick_questions = db.scalars(
+            select(QuickQuestion.question)
+            .where(QuickQuestion.candidate_id == candidate.id)
+            .order_by(QuickQuestion.position)
+        ).all()
         return PublicProfileResponse(
             slug=candidate.slug,
             full_name=profile.full_name if profile else None,
@@ -53,6 +62,10 @@ def get_public_profile(slug: str) -> PublicProfileResponse:
             github_url=candidate.github_url,
             portfolio_url=candidate.portfolio_url,
             agent_language=candidate.agent_language,
+            work_mode=candidate.work_mode,
+            location_city=candidate.location_city,
+            location_country=candidate.location_country,
+            quick_questions=list(quick_questions),
         )
 
 

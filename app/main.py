@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import agent, agent_responses, cv, profile, questions, share
+from app.api import agent, agent_responses, cv, profile, questions, share, stats
 from app.core.config import settings
 from app.core.db import engine
 
@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
     engine.dispose()
 
 
-app = FastAPI(title="Vivae API", lifespan=lifespan)
+app = FastAPI(title="Wetölk API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,6 +29,7 @@ app.include_router(agent_responses.router, prefix="/api/a", tags=["agent-respons
 app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
 app.include_router(questions.router, prefix="/api/questions", tags=["questions"])
 app.include_router(share.router, prefix="/api", tags=["share"])
+app.include_router(stats.router, prefix="/api", tags=["stats"])
 
 
 @app.get("/health")
@@ -46,7 +47,7 @@ def health() -> dict[str, str]:
 def agent_card() -> dict:
     return {
         "protocolVersion": "0.3.0",
-        "name": "Vivae",
+        "name": "Wetölk",
         "description": (
             "Convierte el CV de un candidato en un agente conversacional "
             "con URL propia. Cada candidato tiene un agente público que "
@@ -55,7 +56,7 @@ def agent_card() -> dict:
         "url": settings.public_api_url,
         "version": "0.1.0",
         "preferredTransport": "HTTP+JSON",
-        "provider": {"organization": "Vivae", "url": settings.frontend_url},
+        "provider": {"organization": "Wetölk", "url": settings.frontend_url},
         "capabilities": {
             "streaming": True,
             "pushNotifications": False,
