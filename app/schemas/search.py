@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SearchCriteria(BaseModel):
@@ -14,5 +14,5 @@ class SearchCriteria(BaseModel):
 
 class CandidateMatch(BaseModel):
     highlights: list[str]
-    score: int
+    score: int = Field(ge=0, le=100)
     justification: str

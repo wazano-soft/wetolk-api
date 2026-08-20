@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -16,19 +16,36 @@ router = APIRouter()
 
 def _get_recruiter(db: Session, user: AuthUser) -> Recruiter:
     """Mismo patrón de provisioning perezoso que _get_candidate (cv.py),
-    para el otro actor (RF-10, Fase 2). Cuál de los dos se crea para un
-    usuario nuevo depende de qué endpoint pise primero -- un usuario que
-    entra por /reclutador nunca toca _get_candidate, así que no compiten
-    por el mismo Profile.role."""
+    para el otro actor (RF-10, Fase 2)."""
     recruiter = db.scalar(select(Recruiter).where(Recruiter.user_id == user.id))
     if recruiter is not None:
         return recruiter
 
+    # Una cuenta que ya es candidata no se puede volver reclutadora por
+    # esta vía silenciosa -- sin este chequeo, cualquier candidato
+    # autenticado podía llamar a /api/search y quedar provisionado como
+    # reclutador sobre la marcha, con acceso a los perfiles de otros
+    # candidatos sin haber pasado nunca por /reclutador (hallazgo de
+    # code-review).
+    existing_candidate = db.scalar(select(Candidate).where(Candidate.user_id == user.id))
+    if existing_candidate is not None:
+        raise HTTPException(
+            status_code=403, detail="This account is already registered as a candidate"
+        )
+
     full_name = user.full_name or (user.email or "user").split("@", 1)[0]
     try:
-        if db.get(Profile, user.id) is None:
+        profile = db.get(Profile, user.id)
+        if profile is None:
             db.add(Profile(id=user.id, full_name=full_name, role="recruiter"))
             db.flush()
+        elif profile.role != "recruiter":
+            # El trigger de Postgres (RF-01, ver comentario en cv.py)
+            # siempre crea profiles con role='candidate' por defecto --
+            # no distingue reclutadores. Llegar acá sin fila de Candidate
+            # es la señal real de que esta cuenta es de un reclutador, así
+            # que el default del trigger se corrige acá.
+            profile.role = "recruiter"
         recruiter = Recruiter(user_id=user.id)
         db.add(recruiter)
         db.flush()
@@ -85,7 +102,15 @@ def search_candidates(
     if criteria.work_mode:
         stmt = stmt.where(Candidate.work_mode == criteria.work_mode)
     if criteria.location:
-        stmt = stmt.where(Candidate.location_city.ilike(f"%{criteria.location}%"))
+        # El criterio extraído no distingue ciudad de país ("Argentina" vs
+        # "Buenos Aires") -- buscar solo en location_city dejaba afuera
+        # candidatos que matchean por país.
+        stmt = stmt.where(
+            or_(
+                Candidate.location_city.ilike(f"%{criteria.location}%"),
+                Candidate.location_country.ilike(f"%{criteria.location}%"),
+            )
+        )
     if criteria.years_min:
         stmt = stmt.where(Candidate.years_experience >= criteria.years_min)
 

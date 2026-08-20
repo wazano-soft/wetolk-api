@@ -9,12 +9,33 @@ from sqlalchemy.orm import Session
 from app.api.cv import _get_candidate
 from app.core.auth import AuthUser, get_current_user
 from app.core.db import get_db
-from app.models import CVDocument, Profile, QuickQuestion
+from app.models import Candidate, CVDocument, Profile, QuickQuestion, Recruiter
 from app.services import r2
 from app.services.referral import get_or_create_tier
 from app.services.supabase_admin import delete_auth_user
 
 router = APIRouter()
+
+
+class RoleResponse(BaseModel):
+    role: str | None
+
+
+# Fuente única de verdad para "a dónde mando a esta sesión" -- usada por
+# PwaHomeGuard (lanzar la PWA instalada) y por /login para un usuario que
+# vuelve sin el query param ?role=recruiter (ej. login directo sin pasar
+# por el link de la landing). Antes de esto, esas dos rutas asumían
+# candidato a secas, así que un reclutador que volvía terminaba en
+# /dashboard en vez de /reclutador.
+@router.get("/role", response_model=RoleResponse)
+def get_role(
+    user: AuthUser = Depends(get_current_user), db: Session = Depends(get_db)
+) -> RoleResponse:
+    if db.scalar(select(Candidate).where(Candidate.user_id == user.id)) is not None:
+        return RoleResponse(role="candidate")
+    if db.scalar(select(Recruiter).where(Recruiter.user_id == user.id)) is not None:
+        return RoleResponse(role="recruiter")
+    return RoleResponse(role=None)
 
 
 class CVDocumentExport(BaseModel):
