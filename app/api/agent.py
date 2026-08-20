@@ -13,6 +13,7 @@ from app.models import Profile, QuickQuestion, ReferralVisit, Share
 from app.services.agent_prompt import extract_text_from_content
 from app.services.agent_turn import get_public_candidate, prepare_turn, save_assistant_message
 from app.services.llm import get_chat_model
+from app.services.cache import cached
 from app.services.referral import (
     ALCANCE_VISIT_THRESHOLD,
     advance_tier,
@@ -44,6 +45,14 @@ class PublicProfileResponse(BaseModel):
 
 @router.get("/{slug}", response_model=PublicProfileResponse)
 def get_public_profile(slug: str) -> PublicProfileResponse:
+    # Cache de 60s: el endpoint más pegado bajo tráfico viral (ver RF-08).
+    # Una 404 no queda cacheada -- cached() solo guarda si compute() no
+    # lanza, así que un slug inválido sigue pegándole a la DB en cada hit
+    # (aceptable, no es el caso que este cache busca resolver).
+    return cached(f"public_profile:{slug}", lambda: _build_public_profile(slug))
+
+
+def _build_public_profile(slug: str) -> PublicProfileResponse:
     with SessionLocal() as db:
         candidate = get_public_candidate(db, slug)
         profile = db.get(Profile, candidate.user_id)
