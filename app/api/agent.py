@@ -30,6 +30,7 @@ class PublicProfileResponse(BaseModel):
     headline: str | None
     overview: str | None
     skills: list[str]
+    years_experience: float | None
     linkedin_url: str | None
     github_url: str | None
     portfolio_url: str | None
@@ -47,6 +48,7 @@ def get_public_profile(slug: str) -> PublicProfileResponse:
             headline=candidate.headline,
             overview=candidate.overview,
             skills=candidate.skills,
+            years_experience=candidate.years_experience,
             linkedin_url=candidate.linkedin_url,
             github_url=candidate.github_url,
             portfolio_url=candidate.portfolio_url,
