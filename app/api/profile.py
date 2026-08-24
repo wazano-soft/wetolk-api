@@ -1,7 +1,7 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.api.cv import _get_candidate
@@ -91,6 +91,24 @@ class ProfileUpdate(BaseModel):
     agent_language: Literal["es", "en"] | None = None
     is_public: bool | None = None
     is_searchable: bool | None = None
+
+    @field_validator("location_city")
+    @classmethod
+    def _normalize_city(cls, value: str | None) -> str | None:
+        # location_city es texto libre que el candidato tipea a mano (no lo
+        # extrae el parser de CV) -- sin esto, "morelia" quedaba en
+        # minúscula tal cual se guardó, en vez de "Morelia".
+        if not value:
+            return value
+        particles = {"de", "del", "la", "las", "los", "y"}
+        words = value.strip().split()
+        capitalized = [
+            w.lower() if w.lower() in particles else w[:1].upper() + w[1:].lower()
+            for w in words
+        ]
+        if capitalized:
+            capitalized[0] = capitalized[0][:1].upper() + capitalized[0][1:]
+        return " ".join(capitalized)
 
 
 # Columnas NOT NULL en candidates -- un null explícito en el body para
