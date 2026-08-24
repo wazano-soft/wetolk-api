@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 class CheckoutSessionRequest(BaseModel):
-    amount: float  # en la moneda mostrada al usuario (MXN), no en centavos
+    amount: float  # en dólares (USD), no en centavos -- mismo monto sin importar el idioma de la UI
 
 
 class CheckoutSessionResponse(BaseModel):

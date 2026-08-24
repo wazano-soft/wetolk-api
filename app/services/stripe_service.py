@@ -4,7 +4,7 @@ from app.core.config import settings
 
 stripe.api_key = settings.stripe_secret_key
 
-DONATION_CURRENCY = "mxn"
+DONATION_CURRENCY = "usd"
 
 
 def create_checkout_session(
