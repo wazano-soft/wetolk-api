@@ -12,6 +12,7 @@ from app.api import (
     contact_requests,
     cv,
     donate,
+    feedback,
     profile,
     push,
     questions,
@@ -68,6 +69,7 @@ app.include_router(
     recruiter_profile.router, prefix="/api/recruiter/profile", tags=["recruiter"]
 )
 app.include_router(donate.router, prefix="/api/donate", tags=["donate"])
+app.include_router(feedback.router, prefix="/api/feedback", tags=["feedback"])
 app.include_router(
     contact_requests.router, prefix="/api/contact-requests", tags=["contact-requests"]
 )

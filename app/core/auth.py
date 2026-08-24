@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.config import settings
 
 security = HTTPBearer()
+_optional_security = HTTPBearer(auto_error=False)
 
 # PyJWKClient cachea las claves internamente (respeta el mismo TTL que
 # Supabase expone en el endpoint), así que un solo cliente a nivel de
@@ -43,6 +44,25 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> AuthUser:
     payload = _decode(credentials.credentials)
+    return AuthUser(
+        id=payload["sub"],
+        email=payload.get("email"),
+        full_name=(payload.get("user_metadata") or {}).get("full_name"),
+    )
+
+
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_optional_security),
+) -> AuthUser | None:
+    # Para endpoints públicos que igual quieren asociar la respuesta a una
+    # sesión si existe (ej. feedback.py) -- sin token no es un error, y un
+    # token inválido/vencido tampoco tumba el request, solo se ignora.
+    if credentials is None:
+        return None
+    try:
+        payload = _decode(credentials.credentials)
+    except HTTPException:
+        return None
     return AuthUser(
         id=payload["sub"],
         email=payload.get("email"),

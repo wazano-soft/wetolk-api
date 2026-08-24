@@ -536,3 +536,27 @@ class CandidateEmbedding(Base):
         Index("candidate_embeddings_candidate_id_idx", "candidate_id"),
         {"schema": "public"},
     )
+
+
+class FeedbackReport(Base):
+    # Beta abierta (RF-11): botón "reportar un error/mejora" siempre visible.
+    # Sin FK a auth.users a propósito, igual que Profile -- puede venir de
+    # un visitante sin cuenta.
+    __tablename__ = "feedback_reports"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    email: Mapped[str | None] = mapped_column(Text)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    loom_url: Mapped[str | None] = mapped_column(Text)
+    page_url: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "user_id is not null or email is not null", name="feedback_reports_identity_check"
+        ),
+        {"schema": "public"},
+    )
