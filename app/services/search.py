@@ -5,8 +5,8 @@ CRITERIA_PROMPT = """Extraé los criterios de búsqueda de esta descripción de 
 lenguaje natural, al esquema dado.
 
 REGLAS:
-- Copiá únicamente lo que está implícito o explícito en el texto.
-- Si un criterio no aparece, devolvé null o lista vacía. No lo inventes.
+- Copia únicamente lo que está implícito o explícito en el texto.
+- Si un criterio no aparece, devoluelve null o lista vacía. No lo inventes.
 - years_min es el mínimo de años de experiencia pedido, si se menciona.
 
 Búsqueda: {query}
@@ -26,7 +26,7 @@ Este es el perfil de un candidato (en tercera persona, no le atribuyas nada que
 no esté acá):
 {cv_context}
 
-Generá, al esquema dado:
+Genera, al esquema dado:
 - highlights: hasta 5 frases cortas y concretas de por qué este perfil calza
   con la búsqueda, basadas ÚNICAMENTE en la información de arriba. Nunca
   inventes experiencia, tecnologías ni logros que no estén.
@@ -36,7 +36,7 @@ Generá, al esquema dado:
 
 
 def generate_match(query: str, cv_context: str) -> CandidateMatch:
-    model = get_chat_model(temperature=0.2).with_structured_output(CandidateMatch)
+    model = get_chat_model(temperature=0.1).with_structured_output(CandidateMatch)
     result = model.invoke(MATCH_PROMPT.format(query=query, cv_context=cv_context))
     assert isinstance(result, CandidateMatch)
     return result
