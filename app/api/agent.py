@@ -42,6 +42,7 @@ class PublicProfileResponse(BaseModel):
     linkedin_url: str | None
     github_url: str | None
     portfolio_url: str | None
+    youtube_url: str | None
     agent_language: str
     work_mode: str | None
     location_city: str | None
@@ -148,9 +149,16 @@ def download_public_cv(slug: str) -> Response:
         profile = db.get(Profile, candidate.user_id)
         display_name = (profile.full_name if profile else None) or candidate.slug
         filename = _cv_download_filename(display_name)
-        watermarked = pdf.add_watermark(r2.download_object(document.r2_key))
+        raw_pdf = r2.download_object(document.r2_key)
+        # RF-08: alcanzar "impulso" (3 shares o una donación, nunca se
+        # revoca -- ver referral.py) quita la marca de agua del PDF para
+        # siempre. Es la primera feature real gateada por tier, no solo
+        # informativa como el resto del sistema.
+        tier = get_or_create_tier(db, candidate.id)
+        db.commit()
+        content = raw_pdf if tier.tier != "base" else pdf.add_watermark(raw_pdf)
         return Response(
-            content=watermarked,
+            content=content,
             media_type="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
@@ -201,6 +209,7 @@ def _build_public_profile(slug: str) -> PublicProfileResponse:
             linkedin_url=candidate.linkedin_url,
             github_url=candidate.github_url,
             portfolio_url=candidate.portfolio_url,
+            youtube_url=candidate.youtube_url,
             agent_language=candidate.agent_language,
             work_mode=candidate.work_mode,
             location_city=candidate.location_city,
@@ -216,15 +225,16 @@ def _build_public_profile(slug: str) -> PublicProfileResponse:
 class ChatRequest(BaseModel):
     message: str = Field(max_length=500)
     conversation_id: str | None = None
+    locale: str | None = None
 
 
 @router.post("/{slug}/chat")
 def chat(slug: str, body: ChatRequest, request: Request) -> StreamingResponse:
     client_ip = get_client_ip(request)
-    ctx = prepare_turn(slug, client_ip, body.message, body.conversation_id)
+    ctx = prepare_turn(slug, client_ip, body.message, body.conversation_id, body.locale)
 
     def event_stream() -> Generator[str, None, None]:
-        model = get_chat_model(temperature=0.3)
+        model = get_chat_model(temperature=0.2)
         full_response = ""
         for chunk in model.stream([("system", ctx.system_prompt), ("human", body.message)]):
             token = extract_text_from_content(chunk.content)

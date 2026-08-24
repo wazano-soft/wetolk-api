@@ -71,7 +71,7 @@ def create_response(slug: str, body: ResponsesRequest, request: Request):
     item_id = f"msg_{uuid.uuid4().hex[:24]}"
 
     if not body.stream:
-        model = get_chat_model(temperature=0.3)
+        model = get_chat_model(temperature=0.2)
         result = model.invoke([("system", ctx.system_prompt), ("human", user_text)])
         text = extract_text_from_content(result.content)
         save_assistant_message(ctx.conversation_pk, text)
@@ -111,7 +111,7 @@ def create_response(slug: str, body: ResponsesRequest, request: Request):
             {"item_id": item_id, "content_index": 0, "part": {"type": "output_text", "text": ""}},
         )
 
-        model = get_chat_model(temperature=0.3)
+        model = get_chat_model(temperature=0.2)
         full_text = ""
         for chunk in model.stream([("system", ctx.system_prompt), ("human", user_text)]):
             token = extract_text_from_content(chunk.content)

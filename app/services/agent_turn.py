@@ -51,7 +51,11 @@ class TurnContext:
 
 
 def prepare_turn(
-    slug: str, client_ip: str, message: str, conversation_token_raw: str | None
+    slug: str,
+    client_ip: str,
+    message: str,
+    conversation_token_raw: str | None,
+    visitor_locale: str | None = None,
 ) -> TurnContext:
     """Resuelve el candidato, arma el system prompt con el CV completo en
     contexto (atajo de MVP, §5) y persiste el mensaje del usuario. Común a
@@ -74,7 +78,11 @@ def prepare_turn(
             raise HTTPException(status_code=409, detail="El perfil todavía no está listo")
 
         cv_context = build_cv_context(document.extracted)
-        agent_language = candidate.agent_language
+        # El agente responde en el idioma de quien pregunta, no en el que
+        # el candidato configuró para sí mismo -- ese campo queda como
+        # fallback para contratos que no mandan locale (ej. Open Responses
+        # en agent_responses.py) o si el visitante manda algo inválido.
+        agent_language = visitor_locale if visitor_locale in ("es", "en") else candidate.agent_language
 
         conversation_token: uuid.UUID | None = None
         if conversation_token_raw:
