@@ -26,8 +26,21 @@ def get_questions(
         select(QuickQuestion)
         .where(QuickQuestion.candidate_id == candidate.id)
         .order_by(QuickQuestion.position)
+    ).all()
+    if rows:
+        return QuestionsResponse(questions=[r.question for r in rows])
+
+    # Todavía no se guardó nada (candidato recién procesado, justo antes
+    # del paso 2 del wizard) -- devolvemos las quick_questions que ya
+    # generó el análisis del CV como punto de partida editable, sin
+    # guardarlas. Se guardan recién cuando el usuario confirma vía PUT.
+    document = db.scalar(
+        select(CVDocument).where(
+            CVDocument.candidate_id == candidate.id, CVDocument.is_current.is_(True)
+        )
     )
-    return QuestionsResponse(questions=[r.question for r in rows])
+    suggested = (document.extracted or {}).get("quick_questions", []) if document else []
+    return QuestionsResponse(questions=[q[:80] for q in suggested[:5]])
 
 
 class ReplaceQuestionsRequest(BaseModel):
