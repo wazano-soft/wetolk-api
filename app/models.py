@@ -248,7 +248,7 @@ class QuickQuestion(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("char_length(question) <= 80", name="quick_questions_question_check"),
+        CheckConstraint("char_length(question) <= 150", name="quick_questions_question_check"),
         CheckConstraint("position between 1 and 5", name="quick_questions_position_check"),
         UniqueConstraint("candidate_id", "position"),
         {"schema": "public"},

@@ -47,7 +47,8 @@ Para obtener las suggestions de mejoras, analiza el CV como si fueras un ATS, o 
 4. **Inconsistencias**: Problemas de coherencia entre skills, experiencias y logros que deberían corregirse. Por ejemplo, se menciona una skill 
 pero no se apoya con experiencias relevantes, cursos o proyectos termina siendo palabras sin fundamentos.
 
-Para obtener las quick_questions, usa la información extraída, analízala y genera un máximo de 5 preguntas que permitan destacar la experiencia del candidato ante un potencial reclutador.
+Para obtener las quick_questions, usa la información extraída, analízala y genera un máximo de 5 preguntas que permitan destacar la experiencia del 
+candidato ante un potencial reclutador. Las "quick_sugestions" deberan tener un límite máximo de 150 caracteres.
 
 CV:
 {cv_text}

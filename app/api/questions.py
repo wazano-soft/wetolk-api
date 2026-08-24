@@ -8,7 +8,11 @@ from app.core.auth import AuthUser, get_current_user
 from app.core.db import get_db
 from app.models import CVDocument, QuickQuestion
 from app.services.agent_prompt import build_cv_context
-from app.services.question_suggestions import suggest_questions
+from app.services.question_suggestions import (
+    QUESTION_MAX_LENGTH,
+    suggest_questions,
+    truncate_question,
+)
 
 router = APIRouter()
 
@@ -40,7 +44,7 @@ def get_questions(
         )
     )
     suggested = (document.extracted or {}).get("quick_questions", []) if document else []
-    return QuestionsResponse(questions=[q[:80] for q in suggested[:5]])
+    return QuestionsResponse(questions=[truncate_question(q) for q in suggested[:5]])
 
 
 class ReplaceQuestionsRequest(BaseModel):
@@ -57,8 +61,11 @@ def replace_questions(
     db: Session = Depends(get_db),
 ) -> QuestionsResponse:
     for q in body.questions:
-        if len(q) > 80:
-            raise HTTPException(status_code=422, detail="Cada pregunta puede tener hasta 80 caracteres")
+        if len(q) > QUESTION_MAX_LENGTH:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cada pregunta puede tener hasta {QUESTION_MAX_LENGTH} caracteres",
+            )
 
     candidate = _get_candidate(db, user)
     db.query(QuickQuestion).filter(QuickQuestion.candidate_id == candidate.id).delete()

@@ -7,11 +7,14 @@ reclutador o visitante curioso le haría al agente de este candidato. Van a
 aparecer como botones en su página pública.
 
 REGLAS:
-- Máximo 80 caracteres cada una.
-- Concretas, sobre experiencia/skills/proyectos reales del CV de abajo.
+- Máximo 150 caracteres cada una.
+- Concretas, sobre experiencia/skills/proyectos reales/estudios del CV de abajo.
 - No inventes nada que no esté en el CV.
 - Variedad: no repitas el mismo ángulo (ej. no 5 preguntas todas sobre la
   misma tecnología).
+- SIEMPRE en tercera persona: el visitante le pregunta al agente sobre el
+  candidato, no le habla directamente a él/ella. Bien: "¿Qué desafíos ha
+  enfrentado como líder de equipo?". Mal: "¿Qué desafíos has enfrentado...?".
 
 CV:
 {cv_context}
@@ -22,8 +25,22 @@ class QuestionSuggestions(BaseModel):
     questions: list[str] = Field(min_length=1, max_length=5)
 
 
+QUESTION_MAX_LENGTH = 150
+
+
+def truncate_question(question: str, limit: int = QUESTION_MAX_LENGTH) -> str:
+    # Corta en el último espacio antes del límite (nunca a media palabra) y
+    # marca el corte con elipsis -- el LLM a veces se pasa del límite pedido
+    # en el prompt, y el constraint quick_questions_question_check de la DB
+    # igual lo rechazaría sin este resguardo.
+    if len(question) <= limit:
+        return question
+    truncated = question[: limit - 1].rsplit(" ", 1)[0]
+    return f"{truncated}…"
+
+
 def suggest_questions(cv_context: str) -> list[str]:
-    model = get_chat_model(temperature=0.5).with_structured_output(QuestionSuggestions)
+    model = get_chat_model(temperature=0.2).with_structured_output(QuestionSuggestions)
     result = model.invoke(SUGGEST_PROMPT.format(cv_context=cv_context))
     assert isinstance(result, QuestionSuggestions)
-    return [q[:80] for q in result.questions]
+    return [truncate_question(q) for q in result.questions]
