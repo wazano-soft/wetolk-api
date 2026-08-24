@@ -19,7 +19,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -106,6 +106,10 @@ class Candidate(Base):
     linkedin_url: Mapped[str | None] = mapped_column(Text)
     github_url: Mapped[str | None] = mapped_column(Text)
     portfolio_url: Mapped[str | None] = mapped_column(Text)
+    youtube_url: Mapped[str | None] = mapped_column(Text)
+
+    detected_language: Mapped[str | None] = mapped_column(Text)
+    is_risky_prompt: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 
     contact_email: Mapped[str | None] = mapped_column(Text)
     contact_phone: Mapped[str | None] = mapped_column(Text)
@@ -125,11 +129,18 @@ class Candidate(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
+    cv_documents: Mapped[list["CVDocument"]] = relationship(
+        "CVDocument", back_populates="candidate"
+    )
+    embeddings: Mapped[list["CandidateEmbedding"]] = relationship(
+        "CandidateEmbedding", back_populates="candidate"
+    )
 
     __table_args__ = (
         CheckConstraint("work_mode in ('remote','hybrid','onsite')", name="candidates_work_mode_check"),
         CheckConstraint("agent_language in ('es','en')", name="candidates_agent_language_check"),
         CheckConstraint("status in ('draft','processing','ready','error')", name="candidates_status_check"),
+        CheckConstraint("detected_language in ('es','en','other')", name="candidates_detected_language_check"),
         Index("candidates_slug_idx", "slug"),
         Index(
             "candidates_is_searchable_work_mode_location_country_idx",
@@ -161,15 +172,28 @@ class CVDocument(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     page_count: Mapped[int | None] = mapped_column(Integer)
     extracted: Mapped[dict | None] = mapped_column(JSONB)
+    # Denormalizado acá (aparte de vivir también dentro de `extracted`) para
+    # no tener que parsear el JSON completo solo para listar sugerencias por
+    # CV -- este documento es el dueño natural del dato, no el candidato
+    # (que puede tener varios CVs a lo largo del tiempo).
+    suggestions: Mapped[list | None] = mapped_column(JSONB, server_default=text("'[]'"))
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="uploaded")
     error_message: Mapped[str | None] = mapped_column(Text)
+    # Estado del chunking + embeddings por sección, que corre en background
+    # después de responder /api/cv/process -- independiente de `status`
+    # (que es el pipeline síncrono de parseo del PDF).
+    chunks_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
+    candidate: Mapped["Candidate"] = relationship("Candidate", back_populates="cv_documents")
 
     __table_args__ = (
         CheckConstraint("status in ('uploaded','parsing','parsed','failed')", name="cv_documents_status_check"),
+        CheckConstraint(
+            "chunks_status in ('pending','done','failed')", name="cv_documents_chunks_status_check"
+        ),
         Index("cv_documents_candidate_id_is_current_idx", "candidate_id", "is_current"),
         {"schema": "public"},
     )
@@ -427,6 +451,10 @@ class ContactRequest(Base):
         BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
     )
     message: Mapped[str] = mapped_column(Text, nullable=False)
+    # Snapshot denormalizado del email del reclutador al momento del
+    # contacto, tomado del JWT (AuthUser.email) -- no hay columna de email
+    # alcanzable por SQLAlchemy, auth.users de Supabase no está mapeado acá.
+    recruiter_email: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
@@ -436,5 +464,75 @@ class ContactRequest(Base):
     __table_args__ = (
         CheckConstraint("status in ('pending','accepted','declined','revoked')", name="contact_requests_status_check"),
         UniqueConstraint("recruiter_id", "candidate_id"),
+        {"schema": "public"},
+    )
+
+
+class ContactMessage(Base):
+    __tablename__ = "contact_messages"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    contact_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.contact_requests.id", ondelete="CASCADE"), nullable=False
+    )
+    sender_role: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("sender_role in ('candidate','recruiter')", name="contact_messages_sender_role_check"),
+        Index("contact_messages_contact_request_id_idx", "contact_request_id"),
+        {"schema": "public"},
+    )
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    endpoint: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    p256dh: Mapped[str] = mapped_column(Text, nullable=False)
+    auth: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        Index("push_subscriptions_user_id_idx", "user_id"),
+        {"schema": "public"},
+    )
+
+
+class CandidateEmbedding(Base):
+    __tablename__ = "candidate_embeddings"
+
+    id: Mapped[int] = _bigserial_pk()
+    candidate_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    embedding: Mapped[list[float]] = mapped_column(Vector(512), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    metadata_: Mapped[dict | None] = mapped_column(
+        "metadata", JSONB, server_default=text("'{}'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    candidate: Mapped["Candidate"] = relationship("Candidate", back_populates="embeddings")
+
+    __table_args__ = (
+        Index(
+            "candidate_embeddings_embedding_idx",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+        Index("candidate_embeddings_candidate_id_idx", "candidate_id"),
         {"schema": "public"},
     )
