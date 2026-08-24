@@ -8,21 +8,30 @@ DONATION_CURRENCY = "usd"
 
 
 def create_checkout_session(
-    candidate_id: int, candidate_slug: str, amount_cents: int, success_url: str, cancel_url: str
+    amount_cents: int,
+    success_url: str,
+    cancel_url: str,
+    candidate_id: int | None = None,
+    candidate_slug: str | None = None,
 ) -> stripe.checkout.Session:
+    # candidate_id=None es un aporte general al home, sin candidato
+    # asociado -- el webhook lo distingue por la ausencia de metadata y no
+    # le suma nivel/tier a nadie (RF-07 solo aplica a aportes dirigidos a
+    # un agente puntual).
+    product_name = f"Aporte a Wetölk — {candidate_slug}" if candidate_slug else "Aporte a Wetölk"
     return stripe.checkout.Session.create(
         mode="payment",
         line_items=[
             {
                 "price_data": {
                     "currency": DONATION_CURRENCY,
-                    "product_data": {"name": f"Aporte a Wetölk — {candidate_slug}"},
+                    "product_data": {"name": product_name},
                     "unit_amount": amount_cents,
                 },
                 "quantity": 1,
             }
         ],
-        metadata={"candidate_id": str(candidate_id)},
+        metadata={"candidate_id": str(candidate_id)} if candidate_id is not None else {},
         success_url=success_url,
         cancel_url=cancel_url,
     )

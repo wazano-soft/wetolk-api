@@ -43,6 +43,23 @@ def create_donation_checkout(
     return CheckoutSessionResponse(checkout_url=session.url)
 
 
+@router.post("/general-checkout-session", response_model=CheckoutSessionResponse)
+def create_general_donation_checkout(body: CheckoutSessionRequest) -> CheckoutSessionResponse:
+    # Sin auth a propósito: aporte anónimo desde el home, sin candidato
+    # asociado -- no suma a ningún tier (ver el webhook más abajo).
+    if body.amount <= 0:
+        raise HTTPException(status_code=422, detail="amount must be positive")
+
+    session = create_checkout_session(
+        amount_cents=round(body.amount * 100),
+        success_url=f"{settings.frontend_url}?donated=1",
+        cancel_url=settings.frontend_url,
+    )
+    if not session.url:
+        raise HTTPException(status_code=502, detail="Stripe did not return a checkout URL")
+    return CheckoutSessionResponse(checkout_url=session.url)
+
+
 # Dedup en memoria de eventos ya procesados -- mismo criterio de MVP de
 # instancia única que el resto del proyecto (cache.py, rate limiter en
 # agent_turn.py). Stripe reintenta la entrega del webhook si no responde
@@ -68,14 +85,17 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        candidate_id = int(session["metadata"]["candidate_id"])
+        candidate_id_raw = session["metadata"].get("candidate_id")
         amount_total = session["amount_total"] or 0  # centavos
 
-        with SessionLocal() as db:
-            tier = get_or_create_tier(db, candidate_id)
-            tier.donated_total = float(tier.donated_total) + amount_total / 100
-            # RF-07: cualquier monto desbloquea Impulso de inmediato.
-            advance_tier(tier, "impulso", "donation")
-            db.commit()
+        # Sin candidate_id: aporte general del home (create_general_donation_checkout),
+        # no hay tier de nadie que actualizar.
+        if candidate_id_raw:
+            with SessionLocal() as db:
+                tier = get_or_create_tier(db, int(candidate_id_raw))
+                tier.donated_total = float(tier.donated_total) + amount_total / 100
+                # RF-07: cualquier monto desbloquea Impulso de inmediato.
+                advance_tier(tier, "impulso", "donation")
+                db.commit()
 
     return {"received": True}
