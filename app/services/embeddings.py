@@ -1,4 +1,5 @@
 import numpy as np
+import tiktoken
 from langchain_core.embeddings import Embeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_openai import OpenAIEmbeddings
@@ -44,3 +45,18 @@ def get_embeddings() -> NormalizedEmbeddings:
             dimensions=settings.embedding_dims,
         )
     return NormalizedEmbeddings(inner)
+
+
+def get_token_count(text: str) -> int:
+    """Cuenta tokens usando el tokenizer del modelo activo."""
+    if settings.llm_provider == "gemini":
+        # Para Gemini, usa una aproximación (Gemini usa tokenización diferente)
+        return len(text) // 4  # regla general: ~4 chars por token
+    else:
+        # OpenAI usa tiktoken
+        try:
+            encoding = tiktoken.encoding_for_model(settings.openai_embedding_model)
+            return len(encoding.encode(text))
+        except:
+            # Fallback si falla
+            return len(text.split())

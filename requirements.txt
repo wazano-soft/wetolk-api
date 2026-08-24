@@ -31,3 +31,12 @@ python-multipart
 
 # Donaciones (RF-07)
 stripe
+
+# Cola de background tasks con reintentos (chunking de CV) -- persistida en
+# el mismo Postgres, sin Redis. Pineado porque su schema (db/alembic/versions/
+# 8ec0f1c21f2a_add_procrastinate_schema.py) se lee del paquete instalado.
+procrastinate==3.9.0
+
+# Web Push (notificaciones) -- VAPID, sin proveedor externo ni cuenta de
+# terceros de por medio.
+pywebpush==2.4.0
