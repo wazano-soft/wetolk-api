@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,21 +9,40 @@ from app.api import (
     account,
     agent,
     agent_responses,
+    contact_requests,
     cv,
     donate,
     profile,
+    push,
     questions,
+    recruiter_profile,
     search,
     share,
     stats,
 )
 from app.core.config import settings
 from app.core.db import engine
+from app.core.tasks import task_app
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Worker de Procrastinate embebido en el mismo proceso -- a esta escala
+    # no justifica un deploy aparte. Si el volumen de CVs lo pide más
+    # adelante, esto se reemplaza por `procrastinate worker` como servicio
+    # propio sin tocar las tasks (viven en app/api/cv.py, ya persistidas en
+    # Postgres, sobreviven al reinicio de este proceso).
+    await task_app.open_async()
+    worker_task = asyncio.create_task(task_app.run_worker_async(concurrency=1))
     yield
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+    await task_app.close_async()
     engine.dispose()
 
 
@@ -43,7 +64,14 @@ app.include_router(share.router, prefix="/api", tags=["share"])
 app.include_router(stats.router, prefix="/api", tags=["stats"])
 app.include_router(account.router, prefix="/api/account", tags=["account"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
+app.include_router(
+    recruiter_profile.router, prefix="/api/recruiter/profile", tags=["recruiter"]
+)
 app.include_router(donate.router, prefix="/api/donate", tags=["donate"])
+app.include_router(
+    contact_requests.router, prefix="/api/contact-requests", tags=["contact-requests"]
+)
+app.include_router(push.router, prefix="/api/push", tags=["push"])
 
 
 @app.get("/health")

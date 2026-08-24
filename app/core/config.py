@@ -47,5 +47,10 @@ class Settings(BaseSettings):
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
 
+    # Web Push (notificaciones) — VAPID autogenerado, sin proveedor externo.
+    vapid_private_key: str = ""
+    vapid_public_key: str = ""
+    vapid_subject: str = "mailto:soporte@wetolk.pro"
+
 
 settings = Settings()
