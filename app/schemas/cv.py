@@ -36,13 +36,30 @@ class Certification(BaseModel):
     date: str | None = None
 
 
+class Suggestion(BaseModel):
+    title: str
+    description: str
+    type: Literal["tip", "question", "improvement", "inconsistency", "other"]
+    fix_priority: Literal["low", "medium", "high"]
+    fix_suggestion: str | None = None
+
+
 class CVExtract(BaseModel):
     full_name: str | None = None
     headline: str | None = None
     degree: str | None = None
-    overview: str | None = None
+    overview: str | None = Field(
+        None,
+        description=(
+            "Párrafo de perfil/resumen profesional del candidato -- el texto "
+            "introductorio que suele aparecer al inicio del CV bajo encabezados "
+            "como 'Perfil', 'Profile', 'Summary', 'About', 'Resumen', etc. "
+            "Copiá el texto tal cual aparece bajo esa sección."
+        ),
+    )
     linkedin_url: str | None = None
     github_url: str | None = None
+    youtube_url: str | None = None
     portfolio_url: str | None = None
     skills: list[str] = []
     interests: list[str] = []
@@ -51,4 +68,15 @@ class CVExtract(BaseModel):
     projects: list[Project] = []
     certifications: list[Certification] = []
     achievements: list[str] = []
+    suggestions: list[Suggestion] = Field(
+        default_factory=list,
+        description=(
+            "Análisis generado por vos como experto en reclutamiento/ATS -- esto "
+            "NO es texto extraído del CV, es tu evaluación. Completá siempre con "
+            "al menos algunas entradas cubriendo las 4 categorías (tip, question, "
+            "improvement, inconsistency), salvo que is_risky_prompt sea True."
+        ),
+    )
+    quick_questions: list[str] = []
     detected_language: Literal["es", "en", "other"] = "es"
+    is_risky_prompt: bool = False
