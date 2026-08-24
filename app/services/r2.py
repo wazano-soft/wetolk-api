@@ -14,7 +14,7 @@ _client = boto3.client(
     config=Config(signature_version="s3v4"),
 )
 
-MAX_PDF_SIZE_BYTES = 5 * 1024 * 1024  # RF-02: 5 MB
+MAX_PDF_SIZE_BYTES = 150 * 1024  # 150 KB
 
 
 def cv_key(storage_token: str, ts: str | None = None) -> str:
