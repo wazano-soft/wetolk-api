@@ -29,6 +29,7 @@ class ProfileResponse(BaseModel):
     salary_currency: str | None
     linkedin_url: str | None
     github_url: str | None
+    youtube_url: str | None
     portfolio_url: str | None
     agent_language: str
     is_public: bool
@@ -59,6 +60,7 @@ def get_profile(
         salary_currency=candidate.salary_currency,
         linkedin_url=candidate.linkedin_url,
         github_url=candidate.github_url,
+        youtube_url=candidate.youtube_url,
         portfolio_url=candidate.portfolio_url,
         agent_language=candidate.agent_language,
         is_public=candidate.is_public,
@@ -84,6 +86,7 @@ class ProfileUpdate(BaseModel):
     salary_currency: str | None = Field(None, max_length=3)
     linkedin_url: str | None = None
     github_url: str | None = None
+    youtube_url: str | None = None
     portfolio_url: str | None = None
     agent_language: Literal["es", "en"] | None = None
     is_public: bool | None = None
@@ -140,6 +143,7 @@ def update_profile(
         salary_currency=candidate.salary_currency,
         linkedin_url=candidate.linkedin_url,
         github_url=candidate.github_url,
+        youtube_url=candidate.youtube_url,
         portfolio_url=candidate.portfolio_url,
         agent_language=candidate.agent_language,
         is_public=candidate.is_public,
