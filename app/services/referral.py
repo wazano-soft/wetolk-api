@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.models import CandidateTier
 
 # RF-08 §8: umbrales de "Aporta o Comparte"
-IMPULSO_SHARE_THRESHOLD = 3
+IMPULSO_SHARE_THRESHOLD = 10
 ALCANCE_VISIT_THRESHOLD = 27
 
 # Nunca se revoca un nivel ya alcanzado (regla explícita del doc de marca:
@@ -76,12 +76,18 @@ SHARE_TEXTS = {
     ),
     ("whatsapp", "es"): "Te comparto mi CV, pero este contesta preguntas 👇",
     ("x", "es"): "Mi CV ahora responde preguntas. Probalo:",
+    ("facebook", "es"): "Armé un agente de IA que responde preguntas sobre mi CV. Mirá:",
+    ("reddit", "es"): "Hice que mi CV responda preguntas con IA — ask me anything:",
+    ("instagram", "es"): "Mi CV ahora responde preguntas 👇",
     ("linkedin", "en"): (
         "I'm exploring new opportunities. I built an assistant that answers "
         "any question about my professional background — ask it anything:"
     ),
     ("whatsapp", "en"): "Here's my CV — this one answers questions 👇",
     ("x", "en"): "My CV answers questions now. Try it:",
+    ("facebook", "en"): "I built an AI agent that answers questions about my résumé. Check it out:",
+    ("reddit", "en"): "My résumé answers questions now — ask me anything:",
+    ("instagram", "en"): "My CV answers questions now 👇",
 }
 
 

@@ -42,7 +42,7 @@ def get_tier(
 
 
 class ShareRequest(BaseModel):
-    channel: Literal["linkedin", "x", "whatsapp", "facebook", "copy", "other"]
+    channel: Literal["linkedin", "x", "whatsapp", "facebook", "instagram", "reddit", "copy", "other"]
 
 
 class ShareResponse(BaseModel):
