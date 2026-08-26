@@ -4,7 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.cv import _get_candidate
@@ -27,6 +27,27 @@ def _resolve_actor(db: Session, user: AuthUser, contact_request: ContactRequest)
     raise HTTPException(status_code=404, detail="Contact request not found")
 
 
+def _unread_count(db: Session, cr: ContactRequest, viewer: Literal["candidate", "recruiter"]) -> int:
+    """Cuenta mensajes del OTRO lado posteriores a la última lectura de
+    `viewer` -- el mensaje inicial (síntetico, siempre del reclutador)
+    cuenta aparte porque no vive en ContactMessage."""
+    last_read = cr.candidate_last_read_at if viewer == "candidate" else cr.recruiter_last_read_at
+    other_role = "recruiter" if viewer == "candidate" else "candidate"
+
+    count = 0
+    if other_role == "recruiter" and (last_read is None or cr.created_at > last_read):
+        count += 1
+
+    query = select(func.count()).select_from(ContactMessage).where(
+        ContactMessage.contact_request_id == cr.id,
+        ContactMessage.sender_role == other_role,
+    )
+    if last_read is not None:
+        query = query.where(ContactMessage.created_at > last_read)
+    count += db.scalar(query) or 0
+    return count
+
+
 class ContactRequestOut(BaseModel):
     id: str
     recruiter_company: str | None
@@ -35,6 +56,7 @@ class ContactRequestOut(BaseModel):
     message: str
     status: str
     created_at: datetime
+    unread_count: int
 
 
 class ContactRequestsResponse(BaseModel):
@@ -67,10 +89,27 @@ def list_contact_requests(
                 message=cr.message,
                 status=cr.status,
                 created_at=cr.created_at,
+                unread_count=_unread_count(db, cr, "candidate"),
             )
         )
 
     return ContactRequestsResponse(requests=out)
+
+
+class UnreadCountResponse(BaseModel):
+    unread_count: int
+
+
+@router.get("/unread-count", response_model=UnreadCountResponse)
+def get_unread_count(
+    user: AuthUser = Depends(get_current_user), db: Session = Depends(get_db)
+) -> UnreadCountResponse:
+    candidate = _get_candidate(db, user)
+    contact_requests = db.scalars(
+        select(ContactRequest).where(ContactRequest.candidate_id == candidate.id)
+    ).all()
+    total = sum(_unread_count(db, cr, "candidate") for cr in contact_requests)
+    return UnreadCountResponse(unread_count=total)
 
 
 class UpdateContactRequestStatus(BaseModel):
@@ -103,6 +142,7 @@ def update_contact_request_status(
         message=cr.message,
         status=cr.status,
         created_at=cr.created_at,
+        unread_count=_unread_count(db, cr, "candidate"),
     )
 
 
@@ -115,6 +155,7 @@ class SentContactRequestOut(BaseModel):
     status: str
     created_at: datetime
     responded_at: datetime | None
+    unread_count: int
 
 
 class SentContactRequestsResponse(BaseModel):
@@ -148,10 +189,23 @@ def list_sent_contact_requests(
                 status=cr.status,
                 created_at=cr.created_at,
                 responded_at=cr.responded_at,
+                unread_count=_unread_count(db, cr, "recruiter"),
             )
         )
 
     return SentContactRequestsResponse(requests=out)
+
+
+@router.get("/sent/unread-count", response_model=UnreadCountResponse)
+def get_sent_unread_count(
+    user: AuthUser = Depends(get_current_user), db: Session = Depends(get_db)
+) -> UnreadCountResponse:
+    recruiter = _get_recruiter(db, user)
+    contact_requests = db.scalars(
+        select(ContactRequest).where(ContactRequest.recruiter_id == recruiter.id)
+    ).all()
+    total = sum(_unread_count(db, cr, "recruiter") for cr in contact_requests)
+    return UnreadCountResponse(unread_count=total)
 
 
 class ThreadMessageOut(BaseModel):
@@ -194,6 +248,28 @@ def get_contact_thread(
     return ContactThreadResponse(contact_request_id=str(cr.id), status=cr.status, messages=messages)
 
 
+class MarkReadResponse(BaseModel):
+    status: str
+
+
+@router.post("/{request_id}/read", response_model=MarkReadResponse)
+def mark_thread_read(
+    request_id: uuid.UUID, user: AuthUser = Depends(get_current_user), db: Session = Depends(get_db)
+) -> MarkReadResponse:
+    cr = db.get(ContactRequest, request_id)
+    if cr is None:
+        raise HTTPException(status_code=404, detail="Contact request not found")
+    actor = _resolve_actor(db, user, cr)
+
+    now = datetime.now(timezone.utc)
+    if actor == "candidate":
+        cr.candidate_last_read_at = now
+    else:
+        cr.recruiter_last_read_at = now
+    db.commit()
+    return MarkReadResponse(status="ok")
+
+
 class ThreadMessageIn(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
 
@@ -221,12 +297,12 @@ def post_contact_message(
         candidate = db.get(Candidate, cr.candidate_id)
         recipient_user_id = candidate.user_id if candidate else None
         title = "Nuevo mensaje de un reclutador"
-        url = "/dashboard/messages"
+        url = f"/dashboard/messages?open={cr.id}"
     else:
         recruiter = db.get(Recruiter, cr.recruiter_id)
         recipient_user_id = recruiter.user_id if recruiter else None
         title = "Nuevo mensaje de un candidato"
-        url = "/recruiter/messages"
+        url = f"/recruiter/messages?open={cr.id}"
     if recipient_user_id is not None:
         push.send_push(db, recipient_user_id, {"title": title, "body": body.body[:120], "url": url})
 

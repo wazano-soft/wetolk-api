@@ -343,16 +343,16 @@ def contact_candidate(
         existing.status = "pending"
         existing.created_at = datetime.now(timezone.utc)
         db.commit()
+        cr = existing
     else:
-        db.add(
-            ContactRequest(
-                recruiter_id=recruiter.id,
-                candidate_id=candidate.id,
-                message=body.message,
-                recruiter_email=user.email,
-                status="pending",
-            )
+        cr = ContactRequest(
+            recruiter_id=recruiter.id,
+            candidate_id=candidate.id,
+            message=body.message,
+            recruiter_email=user.email,
+            status="pending",
         )
+        db.add(cr)
         try:
             db.commit()
         except IntegrityError:
@@ -363,24 +363,28 @@ def contact_candidate(
             # _get_candidate (cv.py): se descarta el insert propio y se
             # actualiza la fila que ya ganó, en vez de un 500 crudo.
             db.rollback()
-            existing = db.scalar(
+            cr = db.scalar(
                 select(ContactRequest).where(
                     ContactRequest.recruiter_id == recruiter.id,
                     ContactRequest.candidate_id == candidate.id,
                 )
             )
-            if existing is None:
+            if cr is None:
                 raise
-            existing.message = body.message
-            existing.recruiter_email = user.email
-            existing.status = "pending"
-            existing.created_at = datetime.now(timezone.utc)
+            cr.message = body.message
+            cr.recruiter_email = user.email
+            cr.status = "pending"
+            cr.created_at = datetime.now(timezone.utc)
             db.commit()
 
     push.send_push(
         db,
         candidate.user_id,
-        {"title": "Nuevo mensaje de un reclutador", "body": body.message[:120], "url": "/dashboard/messages"},
+        {
+            "title": "Nuevo mensaje de un reclutador",
+            "body": body.message[:120],
+            "url": f"/dashboard/messages?open={cr.id}",
+        },
     )
 
     return ContactResponse(status="sent")
