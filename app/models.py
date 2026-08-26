@@ -294,7 +294,10 @@ class Share(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("channel in ('linkedin','x','whatsapp','facebook','copy','other')", name="shares_channel_check"),
+        CheckConstraint(
+            "channel in ('linkedin','x','whatsapp','facebook','instagram','reddit','copy','other')",
+            name="shares_channel_check",
+        ),
         Index("shares_ref_token_idx", "ref_token"),
         Index("shares_candidate_id_idx", "candidate_id"),
         {"schema": "public"},
@@ -460,6 +463,11 @@ class ContactRequest(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
+    # NULL = nunca abrió la conversación -- todo cuenta como no leído. Un
+    # timestamp por lado alcanza para "conversación nueva" y "mensajes
+    # nuevos" a la vez (ver migración a4f2e9c17b83).
+    candidate_last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recruiter_last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint("status in ('pending','accepted','declined','revoked')", name="contact_requests_status_check"),
