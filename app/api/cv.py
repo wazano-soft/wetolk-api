@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import AuthUser, get_current_user
 from app.core.db import SessionLocal, get_db
 from app.core.tasks import task_app
-from app.models import Candidate, CandidateTier, CVChunk, CVDocument, Profile
+from app.models import Candidate, CandidateTier, CVChunk, CVDocument, Profile, Recruiter
 from app.services import r2
 from app.services.cv_extraction import extract_cv
 from app.services.embeddings import get_embeddings, get_token_count
@@ -177,6 +177,17 @@ def _get_candidate(db: Session, user: AuthUser) -> Candidate:
     candidate = db.scalar(select(Candidate).where(Candidate.user_id == user.id))
     if candidate is not None:
         return candidate
+
+    # Mismo criterio que _get_recruiter (search.py, hallazgo de code-review
+    # análogo): una cuenta ya registrada como reclutadora no se puede volver
+    # candidata por esta vía silenciosa -- sin este chequeo, cualquier
+    # reclutador que entrara a /dashboard quedaba provisionado como
+    # candidato de la nada, con un Candidate, slug y perfil público reales.
+    existing_recruiter = db.scalar(select(Recruiter).where(Recruiter.user_id == user.id))
+    if existing_recruiter is not None:
+        raise HTTPException(
+            status_code=403, detail="This account is already registered as a recruiter"
+        )
 
     # Provisioning perezoso. El trigger de Postgres (RF-01) solo puede
     # correr cuando auth.users vive en la misma instancia que
