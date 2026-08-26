@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     rate_limit_chat: str = "15/hour"
     public_api_url: str = "http://localhost:8000"
     visit_salt: str = "dev-only-salt-change-in-prod"
+    # Orígenes CORS extra separados por coma, además de frontend_url --
+    # solo para dev, cuando se prueba desde varias superficies a la vez
+    # (localhost, IP LAN, túnel) sin tener que reiniciar el backend cada
+    # vez que se cambia de una a otra. Vacío por default, no afecta prod.
+    extra_cors_origins: str = ""
 
     # Stripe (RF-07 — donaciones)
     stripe_secret_key: str = ""

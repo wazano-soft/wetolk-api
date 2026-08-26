@@ -51,7 +51,8 @@ app = FastAPI(title="Wetölk API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=[settings.frontend_url]
+    + [o.strip() for o in settings.extra_cors_origins.split(",") if o.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )

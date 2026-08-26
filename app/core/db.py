@@ -16,7 +16,14 @@ def sqlalchemy_url(url: str) -> str:
     return url
 
 
-engine = create_engine(sqlalchemy_url(settings.database_url))
+engine = create_engine(
+    sqlalchemy_url(settings.database_url),
+    # El pooler de Supabase en modo Transaction (puerto 6543) reasigna la
+    # conexión física de Postgres entre statements de una misma sesión --
+    # los prepared statements de psycopg quedan atados a esa conexión y
+    # colisionan (DuplicatePreparedStatement) apenas se reusa el pool.
+    connect_args={"prepare_threshold": None},
+)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
