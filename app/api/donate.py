@@ -35,8 +35,8 @@ def create_donation_checkout(
         candidate_id=candidate.id,
         candidate_slug=candidate.slug,
         amount_cents=round(body.amount * 100),
-        success_url=f"{settings.frontend_url}/dashboard/share?donated=1",
-        cancel_url=f"{settings.frontend_url}/dashboard/share",
+        success_url=f"{settings.frontend_url}/dashboard?donated=1",
+        cancel_url=f"{settings.frontend_url}/dashboard",
     )
     if not session.url:
         raise HTTPException(status_code=502, detail="Stripe did not return a checkout URL")
