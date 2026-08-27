@@ -20,6 +20,7 @@ from app.api import (
     search,
     share,
     stats,
+    waitlist,
 )
 from app.core.config import settings
 from app.core.db import engine
@@ -75,6 +76,7 @@ app.include_router(
     contact_requests.router, prefix="/api/contact-requests", tags=["contact-requests"]
 )
 app.include_router(push.router, prefix="/api/push", tags=["push"])
+app.include_router(waitlist.router, prefix="/api/waitlist", tags=["waitlist"])
 
 
 @app.get("/health")
