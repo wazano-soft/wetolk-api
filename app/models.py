@@ -28,8 +28,11 @@ class Base(DeclarativeBase):
 
 # Cantidad de pasos del wizard de onboarding (ver Candidate.onboarding_step
 # más abajo) -- única fuente del número, para no duplicarlo entre
-# api/account.py y api/profile.py.
-TOTAL_ONBOARDING_STEPS = 4
+# api/account.py y api/profile.py. Subió a 5 al agregar el paso de
+# directrices/declaraciones antes de la carga del CV -- los candidatos que
+# ya tenían onboarding_finished=true con la numeración vieja (tope en 4)
+# no se ven afectados, ese flag es independiente y nunca se recalcula.
+TOTAL_ONBOARDING_STEPS = 5
 
 
 def _uuid_pk():
@@ -135,8 +138,9 @@ class Candidate(Base):
     is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     is_searchable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     # Paso más avanzado del wizard de onboarding que este candidato alcanzó
-    # (1=CV, 2=datos, 3=preguntas, 4=compartir/listo) -- permite retomar en
-    # el siguiente login en vez de reempezar desde cero si lo abandonó.
+    # (1=directrices/declaraciones, 2=CV, 3=datos, 4=preguntas,
+    # 5=compartir/listo) -- permite retomar en el siguiente login en vez de
+    # reempezar desde cero si lo abandonó.
     onboarding_step: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default=text("1"))
     # Marca explícita e independiente del número de pasos -- si el wizard
     # gana un paso más en el futuro, "onboarding_step" solo no alcanza para
@@ -145,6 +149,14 @@ class Candidate(Base):
     # api/profile.py), nunca se vuelve a false.
     onboarding_finished: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     onboarding_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Los dos checkboxes del paso 1 del wizard (ver onboarding/page.tsx,
+    # guidelines.ackQuality/ackResponsibility) -- se guardan como evidencia
+    # de que el candidato autorizó el uso de su CV bajo esas condiciones
+    # antes de subirlo. cv_ack_at lo setea el servidor, no el cliente, para
+    # que la marca de tiempo sirva como prueba.
+    cv_quality_ack: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    cv_responsibility_ack: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    cv_ack_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     profile_embedding: Mapped[list[float] | None] = mapped_column(Vector(512))
 
@@ -592,5 +604,25 @@ class FeedbackReport(Base):
         CheckConstraint(
             "user_id is not null or email is not null", name="feedback_reports_identity_check"
         ),
+        {"schema": "public"},
+    )
+
+
+class RecruiterWaitlistSignup(Base):
+    # RF pendiente: la búsqueda de candidatos para reclutadores todavía no
+    # está lista -- esto es la lista de espera que reemplaza el signup real
+    # mientras tanto (ver Header/landing/ContactModal, todos apuntan acá en
+    # vez de a /login?role=recruiter).
+    __tablename__ = "recruiter_waitlist_signups"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("email", name="recruiter_waitlist_signups_email_key"),
         {"schema": "public"},
     )

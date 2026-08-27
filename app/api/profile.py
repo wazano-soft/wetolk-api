@@ -100,6 +100,8 @@ class ProfileUpdate(BaseModel):
     agent_language: Literal["es", "en"] | None = None
     is_searchable: bool | None = None
     onboarding_step: int | None = Field(None, ge=1, le=TOTAL_ONBOARDING_STEPS)
+    cv_quality_ack: bool | None = None
+    cv_responsibility_ack: bool | None = None
 
     @field_validator("location_city")
     @classmethod
@@ -159,6 +161,20 @@ def update_profile(
         if updates["onboarding_step"] >= TOTAL_ONBOARDING_STEPS and not candidate.onboarding_finished:
             updates["onboarding_finished"] = True
             updates["onboarding_finished_at"] = datetime.now(timezone.utc)
+    # Los dos ack del CV son evidencia de consentimiento -- monotónicos
+    # (un false explícito no puede desmarcar uno ya en true) y con
+    # timestamp puesto por el servidor, no por el cliente, para que sirva
+    # como prueba real de cuándo se dio.
+    if "cv_quality_ack" in updates:
+        updates["cv_quality_ack"] = updates["cv_quality_ack"] or candidate.cv_quality_ack
+    if "cv_responsibility_ack" in updates:
+        updates["cv_responsibility_ack"] = updates["cv_responsibility_ack"] or candidate.cv_responsibility_ack
+    if (
+        (updates.get("cv_quality_ack") or candidate.cv_quality_ack)
+        and (updates.get("cv_responsibility_ack") or candidate.cv_responsibility_ack)
+        and candidate.cv_ack_at is None
+    ):
+        updates["cv_ack_at"] = datetime.now(timezone.utc)
     for field, value in updates.items():
         setattr(candidate, field, value)
 
