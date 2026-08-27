@@ -35,6 +35,7 @@ router = APIRouter()
 class PublicProfileResponse(BaseModel):
     slug: str
     full_name: str | None
+    avatar_url: str | None
     headline: str | None
     overview: str | None
     skills: list[str]
@@ -202,6 +203,7 @@ def _build_public_profile(slug: str) -> PublicProfileResponse:
         return PublicProfileResponse(
             slug=candidate.slug,
             full_name=profile.full_name if profile else None,
+            avatar_url=profile.avatar_url if profile else None,
             headline=candidate.headline,
             overview=candidate.overview,
             skills=candidate.skills,

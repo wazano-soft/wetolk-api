@@ -16,6 +16,7 @@ router = APIRouter()
 class ProfileResponse(BaseModel):
     slug: str
     full_name: str | None
+    avatar_url: str | None
     headline: str | None
     degree: str | None
     overview: str | None
@@ -50,6 +51,7 @@ def get_profile(
     return ProfileResponse(
         slug=candidate.slug,
         full_name=profile.full_name if profile else None,
+        avatar_url=profile.avatar_url if profile else None,
         headline=candidate.headline,
         degree=candidate.degree,
         overview=candidate.overview,
@@ -172,6 +174,7 @@ def update_profile(
     return ProfileResponse(
         slug=candidate.slug,
         full_name=profile.full_name if profile else None,
+        avatar_url=profile.avatar_url if profile else None,
         headline=candidate.headline,
         degree=candidate.degree,
         overview=candidate.overview,

@@ -51,6 +51,15 @@ class Profile(Base):
         Text, nullable=False, server_default="candidate"
     )
     full_name: Mapped[str | None] = mapped_column(Text)
+    # Viene de user_metadata.avatar_url (o .picture) del provider OAuth --
+    # ver AuthUser en core/auth.py. Nunca lo pisamos con signup por
+    # email/password, que no manda ninguno de los dos.
+    avatar_url: Mapped[str | None] = mapped_column(Text)
+    # "google", "linkedin_oidc" o "email" -- Supabase ya lo trackea solo en
+    # auth.users.raw_app_meta_data.provider, esto es la copia de una sola
+    # vez al crear la cuenta para poder segmentar/reportar desde acá sin
+    # tocar el schema de auth.
+    signup_provider: Mapped[str | None] = mapped_column(Text)
     locale: Mapped[str] = mapped_column(Text, nullable=False, server_default="es")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

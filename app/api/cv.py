@@ -200,7 +200,14 @@ def _get_candidate(db: Session, user: AuthUser) -> Candidate:
 
     try:
         if db.get(Profile, user.id) is None:
-            db.add(Profile(id=user.id, full_name=full_name))
+            db.add(
+                Profile(
+                    id=user.id,
+                    full_name=full_name,
+                    avatar_url=user.avatar_url,
+                    signup_provider=user.provider,
+                )
+            )
             db.flush()  # profiles antes que candidates: sin relationship()
             # declarada entre las dos, SQLAlchemy no infiere el orden de
             # inserción solo del ForeignKey crudo -- lo forzamos a mano.

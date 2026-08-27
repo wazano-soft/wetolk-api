@@ -22,6 +22,10 @@ class AuthUser:
     id: str
     email: str | None
     full_name: str | None
+    avatar_url: str | None
+    # "google", "linkedin_oidc", "email" -- Supabase lo mantiene solo en
+    # app_metadata.provider, nunca lo pisa un usuario.
+    provider: str | None
 
 
 def _decode(token: str) -> dict:
@@ -44,10 +48,15 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> AuthUser:
     payload = _decode(credentials.credentials)
+    metadata = payload.get("user_metadata") or {}
     return AuthUser(
         id=payload["sub"],
         email=payload.get("email"),
-        full_name=(payload.get("user_metadata") or {}).get("full_name"),
+        # LinkedIn (OIDC estándar) manda "name", no "full_name" -- Google sí
+        # manda full_name.
+        full_name=metadata.get("full_name") or metadata.get("name"),
+        avatar_url=metadata.get("avatar_url") or metadata.get("picture"),
+        provider=(payload.get("app_metadata") or {}).get("provider"),
     )
 
 
@@ -63,8 +72,11 @@ def get_optional_user(
         payload = _decode(credentials.credentials)
     except HTTPException:
         return None
+    metadata = payload.get("user_metadata") or {}
     return AuthUser(
         id=payload["sub"],
         email=payload.get("email"),
-        full_name=(payload.get("user_metadata") or {}).get("full_name"),
+        full_name=metadata.get("full_name") or metadata.get("name"),
+        avatar_url=metadata.get("avatar_url") or metadata.get("picture"),
+        provider=(payload.get("app_metadata") or {}).get("provider"),
     )
