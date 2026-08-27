@@ -19,6 +19,9 @@ router = APIRouter()
 
 class RoleResponse(BaseModel):
     role: str | None
+    # Solo tiene sentido para role="candidate" -- None en cualquier otro
+    # caso.
+    onboarding_complete: bool | None = None
 
 
 # Fuente única de verdad para "a dónde mando a esta sesión" -- usada por
@@ -31,8 +34,9 @@ class RoleResponse(BaseModel):
 def get_role(
     user: AuthUser = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> RoleResponse:
-    if db.scalar(select(Candidate).where(Candidate.user_id == user.id)) is not None:
-        return RoleResponse(role="candidate")
+    candidate = db.scalar(select(Candidate).where(Candidate.user_id == user.id))
+    if candidate is not None:
+        return RoleResponse(role="candidate", onboarding_complete=candidate.onboarding_finished)
     if db.scalar(select(Recruiter).where(Recruiter.user_id == user.id)) is not None:
         return RoleResponse(role="recruiter")
     return RoleResponse(role=None)

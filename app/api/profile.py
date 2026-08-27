@@ -1,13 +1,14 @@
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app.api.cv import _get_candidate
 from app.core.auth import AuthUser, get_current_user
 from app.core.db import get_db
-from app.models import Profile
+from app.models import TOTAL_ONBOARDING_STEPS, Profile
 
 router = APIRouter()
 
@@ -35,6 +36,9 @@ class ProfileResponse(BaseModel):
     is_public: bool
     is_searchable: bool
     status: str
+    onboarding_step: int
+    onboarding_finished: bool
+    onboarding_finished_at: datetime | None
 
 
 @router.get("", response_model=ProfileResponse)
@@ -66,6 +70,9 @@ def get_profile(
         is_public=candidate.is_public,
         is_searchable=candidate.is_searchable,
         status=candidate.status,
+        onboarding_step=candidate.onboarding_step,
+        onboarding_finished=candidate.onboarding_finished,
+        onboarding_finished_at=candidate.onboarding_finished_at,
     )
 
 
@@ -89,8 +96,8 @@ class ProfileUpdate(BaseModel):
     youtube_url: str | None = None
     portfolio_url: str | None = None
     agent_language: Literal["es", "en"] | None = None
-    is_public: bool | None = None
     is_searchable: bool | None = None
+    onboarding_step: int | None = Field(None, ge=1, le=TOTAL_ONBOARDING_STEPS)
 
     @field_validator("location_city")
     @classmethod
@@ -110,13 +117,19 @@ class ProfileUpdate(BaseModel):
             capitalized[0] = capitalized[0][:1].upper() + capitalized[0][1:]
         return " ".join(capitalized)
 
+    @model_validator(mode="after")
+    def _validate_salary_range(self) -> "ProfileUpdate":
+        if self.salary_min is not None and self.salary_max is not None and self.salary_min > self.salary_max:
+            raise ValueError("salary_min cannot be greater than salary_max")
+        return self
+
 
 # Columnas NOT NULL en candidates -- un null explícito en el body para
 # cualquiera de estas rompía en el commit con un IntegrityError sin
 # capturar (500 crudo). full_name no está acá porque profiles.full_name
 # sí admite null: un candidato puede querer borrarlo.
 _NOT_NULLABLE_FIELDS = {
-    "skills", "interests", "agent_language", "is_public", "is_searchable",
+    "skills", "interests", "agent_language", "is_searchable", "onboarding_step",
 }
 
 
@@ -132,6 +145,18 @@ def update_profile(
     for field in _NOT_NULLABLE_FIELDS & updates.keys():
         if updates[field] is None:
             raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+    if "onboarding_step" in updates:
+        # Monotónico -- una pestaña vieja del wizard (ej. quedó abierta en
+        # el paso 2 mientras en otra ya se llegó al 4) no puede retroceder
+        # el progreso guardado.
+        updates["onboarding_step"] = max(updates["onboarding_step"], candidate.onboarding_step)
+        # onboarding_finished(_at) no lo manda el cliente -- se deriva acá,
+        # una sola vez, para que sea un marcador server-side confiable
+        # (segmentación/campañas) independiente de si el wizard cambia de
+        # cantidad de pasos más adelante.
+        if updates["onboarding_step"] >= TOTAL_ONBOARDING_STEPS and not candidate.onboarding_finished:
+            updates["onboarding_finished"] = True
+            updates["onboarding_finished_at"] = datetime.now(timezone.utc)
     for field, value in updates.items():
         setattr(candidate, field, value)
 
@@ -167,4 +192,7 @@ def update_profile(
         is_public=candidate.is_public,
         is_searchable=candidate.is_searchable,
         status=candidate.status,
+        onboarding_step=candidate.onboarding_step,
+        onboarding_finished=candidate.onboarding_finished,
+        onboarding_finished_at=candidate.onboarding_finished_at,
     )

@@ -26,6 +26,12 @@ class Base(DeclarativeBase):
     pass
 
 
+# Cantidad de pasos del wizard de onboarding (ver Candidate.onboarding_step
+# más abajo) -- única fuente del número, para no duplicarlo entre
+# api/account.py y api/profile.py.
+TOTAL_ONBOARDING_STEPS = 4
+
+
 def _uuid_pk():
     return mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
@@ -119,6 +125,17 @@ class Candidate(Base):
     agent_language: Mapped[str] = mapped_column(Text, nullable=False, server_default="es")
     is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     is_searchable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    # Paso más avanzado del wizard de onboarding que este candidato alcanzó
+    # (1=CV, 2=datos, 3=preguntas, 4=compartir/listo) -- permite retomar en
+    # el siguiente login en vez de reempezar desde cero si lo abandonó.
+    onboarding_step: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default=text("1"))
+    # Marca explícita e independiente del número de pasos -- si el wizard
+    # gana un paso más en el futuro, "onboarding_step" solo no alcanza para
+    # saber quién ya había terminado con la versión vieja vs. quién quedó a
+    # medias con la nueva. Se setea una sola vez (ver update_profile en
+    # api/profile.py), nunca se vuelve a false.
+    onboarding_finished: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    onboarding_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     profile_embedding: Mapped[list[float] | None] = mapped_column(Vector(512))
 
