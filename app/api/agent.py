@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -15,7 +16,15 @@ from app.api.search import _get_recruiter
 from app.core.auth import AuthUser, get_current_user
 from app.core.db import SessionLocal, get_db
 from app.core.http import get_client_ip
-from app.models import ContactRequest, CVDocument, Profile, QuickQuestion, ReferralVisit, Share
+from app.models import (
+    ContactRequest,
+    CVDocument,
+    Profile,
+    QuickQuestion,
+    ReferralVisit,
+    RecruiterWaitlistSignup,
+    Share,
+)
 from app.services.agent_prompt import extract_text_from_content
 from app.services.agent_turn import get_public_candidate, prepare_turn, save_assistant_message
 from app.services.llm import get_chat_model
@@ -386,6 +395,78 @@ def contact_candidate(
             "title": "Nuevo mensaje de un reclutador",
             "body": body.message[:120],
             "url": f"/dashboard/messages?open={cr.id}",
+        },
+    )
+
+    return ContactResponse(status="sent")
+
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+class AnonymousContactRequestIn(BaseModel):
+    email: str
+    message: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not _EMAIL_RE.match(value):
+            raise ValueError("invalid email")
+        return value
+
+
+@router.post("/{slug}/contact-email", response_model=ContactResponse, status_code=201)
+def contact_candidate_anonymous(
+    slug: str, body: AnonymousContactRequestIn, db: Session = Depends(get_db)
+) -> ContactResponse:
+    # Fase transitoria sin cuentas de reclutador reales (ver
+    # NEXT_PUBLIC_RECRUITER_COMING_SOON) -- cualquier visitante puede
+    # contactar solo con su email, sin loguearse. recruiter_id queda NULL;
+    # el email es el único dato del remitente, y también se anota en la
+    # lista de espera para cuando la funcionalidad real esté lista.
+    candidate = get_public_candidate(db, slug)
+
+    existing = db.scalar(
+        select(ContactRequest).where(
+            ContactRequest.recruiter_id.is_(None),
+            ContactRequest.recruiter_email == body.email,
+            ContactRequest.candidate_id == candidate.id,
+        )
+    )
+    if existing is not None:
+        existing.message = body.message
+        existing.status = "pending"
+        existing.created_at = datetime.now(timezone.utc)
+        cr = existing
+    else:
+        cr = ContactRequest(
+            recruiter_id=None,
+            candidate_id=candidate.id,
+            message=body.message,
+            recruiter_email=body.email,
+            status="pending",
+        )
+        db.add(cr)
+
+    db.execute(
+        insert(RecruiterWaitlistSignup)
+        .values(email=body.email)
+        .on_conflict_do_nothing(index_elements=["email"])
+    )
+    db.commit()
+
+    push.send_push(
+        db,
+        candidate.user_id,
+        {
+            "title": "Nuevo mensaje de un visitante",
+            "body": body.message[:120],
+            # Sin ?open=<id> a propósito -- ese id abriría el modal de
+            # conversación, que ya no se ofrece para hilos anónimos (ver
+            # is_anonymous en contact_requests.py). Solo a la lista.
+            "url": "/dashboard/messages",
         },
     )
 

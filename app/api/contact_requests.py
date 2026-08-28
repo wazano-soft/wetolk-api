@@ -53,6 +53,11 @@ class ContactRequestOut(BaseModel):
     recruiter_company: str | None
     recruiter_name: str | None
     recruiter_email: str | None
+    # True cuando vino de contact_candidate_anonymous (agent.py), sin
+    # cuenta de reclutador real detrás -- el frontend usa esto para no
+    # ofrecer mensajería dentro de la plataforma en ese hilo, ver
+    # post_contact_message más abajo.
+    is_anonymous: bool
     message: str
     status: str
     created_at: datetime
@@ -78,7 +83,10 @@ def list_contact_requests(
     # no justifica armar el join contra recruiters + profiles acá.
     out = []
     for cr in contact_requests:
-        recruiter = db.get(Recruiter, cr.recruiter_id)
+        # recruiter_id es NULL en contactos anónimos (ver
+        # contact_candidate_anonymous en agent.py) -- db.get con None
+        # como PK tira, no devuelve None.
+        recruiter = db.get(Recruiter, cr.recruiter_id) if cr.recruiter_id else None
         recruiter_profile = db.get(Profile, recruiter.user_id) if recruiter else None
         out.append(
             ContactRequestOut(
@@ -86,6 +94,7 @@ def list_contact_requests(
                 recruiter_company=recruiter.company if recruiter else None,
                 recruiter_name=recruiter_profile.full_name if recruiter_profile else None,
                 recruiter_email=cr.recruiter_email,
+                is_anonymous=cr.recruiter_id is None,
                 message=cr.message,
                 status=cr.status,
                 created_at=cr.created_at,
@@ -132,13 +141,14 @@ def update_contact_request_status(
     cr.responded_at = datetime.now(timezone.utc)
     db.commit()
 
-    recruiter = db.get(Recruiter, cr.recruiter_id)
+    recruiter = db.get(Recruiter, cr.recruiter_id) if cr.recruiter_id else None
     recruiter_profile = db.get(Profile, recruiter.user_id) if recruiter else None
     return ContactRequestOut(
         id=str(cr.id),
         recruiter_company=recruiter.company if recruiter else None,
         recruiter_name=recruiter_profile.full_name if recruiter_profile else None,
         recruiter_email=cr.recruiter_email,
+        is_anonymous=cr.recruiter_id is None,
         message=cr.message,
         status=cr.status,
         created_at=cr.created_at,
@@ -285,6 +295,12 @@ def post_contact_message(
     if cr is None:
         raise HTTPException(status_code=404, detail="Contact request not found")
     actor = _resolve_actor(db, user, cr)
+    if cr.recruiter_id is None:
+        # Hilo anónimo (ver contact_candidate_anonymous en agent.py) --
+        # sin la sección de reclutadores liberada, no hay mensajería
+        # dentro de la plataforma para este caso. El remitente respondió
+        # por el mailto: que ya recibió (ver recruiter_email).
+        raise HTTPException(status_code=403, detail="In-platform messaging is not available for this contact yet")
 
     msg = ContactMessage(contact_request_id=cr.id, sender_role=actor, body=body.body)
     db.add(msg)
@@ -299,7 +315,10 @@ def post_contact_message(
         title = "Nuevo mensaje de un reclutador"
         url = f"/dashboard/messages?open={cr.id}"
     else:
-        recruiter = db.get(Recruiter, cr.recruiter_id)
+        # recruiter_id NULL = hilo anónimo (ver contact_candidate_anonymous
+        # en agent.py) -- no hay a quién notificar, ese remitente nunca se
+        # autenticó y no tiene cuenta.
+        recruiter = db.get(Recruiter, cr.recruiter_id) if cr.recruiter_id else None
         recipient_user_id = recruiter.user_id if recruiter else None
         title = "Nuevo mensaje de un candidato"
         url = f"/recruiter/messages?open={cr.id}"

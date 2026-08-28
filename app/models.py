@@ -485,8 +485,13 @@ class ContactRequest(Base):
     __tablename__ = "contact_requests"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    recruiter_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("public.recruiters.id", ondelete="CASCADE"), nullable=False
+    # NULL = contacto anónimo por email durante la fase sin cuentas de
+    # reclutador reales (ver NEXT_PUBLIC_RECRUITER_COMING_SOON / endpoint
+    # contact_candidate_anonymous en agent.py) -- ese caso no tiene forma
+    # de volver a autenticarse, así que solo el candidato puede leer/
+    # responder ese hilo (ver _resolve_actor en contact_requests.py).
+    recruiter_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("public.recruiters.id", ondelete="CASCADE"), nullable=True
     )
     candidate_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("public.candidates.id", ondelete="CASCADE"), nullable=False
@@ -495,6 +500,8 @@ class ContactRequest(Base):
     # Snapshot denormalizado del email del reclutador al momento del
     # contacto, tomado del JWT (AuthUser.email) -- no hay columna de email
     # alcanzable por SQLAlchemy, auth.users de Supabase no está mapeado acá.
+    # Cuando recruiter_id es NULL, este es el ÚNICO dato de contacto del
+    # remitente (el email que puso en el form anónimo).
     recruiter_email: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
