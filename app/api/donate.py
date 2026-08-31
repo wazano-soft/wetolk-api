@@ -7,6 +7,7 @@ from app.api.cv import _get_candidate
 from app.core.auth import AuthUser, get_current_user
 from app.core.config import settings
 from app.core.db import SessionLocal, get_db
+from app.services.fx import usd_to_mxn_cents
 from app.services.referral import advance_tier, get_or_create_tier
 from app.services.stripe_service import construct_webhook_event, create_checkout_session
 
@@ -34,7 +35,7 @@ def create_donation_checkout(
     session = create_checkout_session(
         candidate_id=candidate.id,
         candidate_slug=candidate.slug,
-        amount_cents=round(body.amount * 100),
+        amount_cents=usd_to_mxn_cents(body.amount),
         success_url=f"{settings.frontend_url}/dashboard?donated=1",
         cancel_url=f"{settings.frontend_url}/dashboard",
     )
@@ -51,7 +52,7 @@ def create_general_donation_checkout(body: CheckoutSessionRequest) -> CheckoutSe
         raise HTTPException(status_code=422, detail="amount must be positive")
 
     session = create_checkout_session(
-        amount_cents=round(body.amount * 100),
+        amount_cents=usd_to_mxn_cents(body.amount),
         success_url=f"{settings.frontend_url}?donated=1",
         cancel_url=settings.frontend_url,
     )
@@ -86,7 +87,13 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         candidate_id_raw = session["metadata"].get("candidate_id")
-        amount_total = session["amount_total"] or 0  # centavos
+        # Centavos de MXN (la sesión se crea en pesos). Adaptive Pricing no
+        # cambia esto: si el donante paga en su moneda, `amount_total` sigue
+        # en la moneda de integración y el monto local va en
+        # `presentment_details`. donated_total pasa a acumularse en pesos --
+        # solo se usa para mostrar y para desbloquear Impulso con cualquier
+        # monto, no se compara contra ningún umbral.
+        amount_total = session["amount_total"] or 0
 
         # Sin candidate_id: aporte general del home (create_general_donation_checkout),
         # no hay tier de nadie que actualizar.

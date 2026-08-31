@@ -2,8 +2,11 @@ from pydantic import BaseModel, Field
 
 from app.services.llm import get_chat_model
 
-SUGGEST_PROMPT = """A partir de este CV, generá 5 preguntas cortas que un
-reclutador o visitante curioso le haría al agente de este candidato. Van a
+SUGGEST_PROMPT = """A partir de este CV, genera 5 preguntas cortas que un
+reclutador o visitante curioso le haría al agente de este candidato, todas las
+preguntas que generes deberan poder ser contestadas en su totalidad con la información
+recabada del CV, ya sea que se tenga la respuesta descrita exactamente o que lo puedas 
+resumir/inferir del resto de información del CV. Van a
 aparecer como botones en su página pública.
 
 REGLAS:

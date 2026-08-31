@@ -52,6 +52,19 @@ class Settings(BaseSettings):
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
 
+    # Tipo de cambio USD->MXN. Los presets de donación se piensan en USD,
+    # pero una cuenta Stripe de México solo liquida en MXN (no hay
+    # multi-currency settlement para MX) y a tarjetas mexicanas solo se les
+    # cobra en MXN, así que la Checkout Session se crea en pesos. El monto
+    # se convierte con el FIX de Banxico (serie SF43718) al crear la sesión.
+    banxico_token: str = ""
+    # Fallback si Banxico no responde al crear la sesión -- pesos por dólar,
+    # deliberadamente holgado para no quedar corto. Subir si el spot se aleja.
+    usd_mxn_fallback_rate: float = 20.0
+    # Colchón sobre la tasa FIX: cubre el movimiento intradía y el spread
+    # que Stripe le aplica al donante extranjero vía Adaptive Pricing.
+    fx_buffer: float = 1.00
+
     # Web Push (notificaciones) — VAPID autogenerado, sin proveedor externo.
     vapid_private_key: str = ""
     vapid_public_key: str = ""

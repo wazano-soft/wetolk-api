@@ -145,7 +145,7 @@ def download_public_cv(slug: str) -> Response:
     # Se proxea el contenido en vez de redirigir a una URL firmada de R2
     # -- así el navegador nunca ve la key del bucket ni una URL firmada
     # copiable/compartible por fuera de esta página. El CV está acotado a
-    # 150KB (r2.MAX_PDF_SIZE_BYTES), así que traerlo entero a memoria acá
+    # 250KB (r2.MAX_PDF_SIZE_BYTES), así que traerlo entero a memoria acá
     # es aceptable, no justifica streaming por chunks.
     with SessionLocal() as db:
         candidate = get_public_candidate(db, slug)

@@ -14,7 +14,7 @@ _client = boto3.client(
     config=Config(signature_version="s3v4"),
 )
 
-MAX_PDF_SIZE_BYTES = 150 * 1024  # 150 KB
+MAX_PDF_SIZE_BYTES = 250 * 1024  # 250 KB
 
 
 def cv_key(storage_token: str, ts: str | None = None) -> str:
@@ -25,9 +25,9 @@ def cv_key(storage_token: str, ts: str | None = None) -> str:
 def create_upload_url(key: str, expires_in: int = 300) -> str:
     # NOTA: un presigned PUT no puede acotar el tamaño del body (eso es
     # solo de presigned POST, vía la condición content-length-range). El
-    # límite de 5MB hoy se aplica recién en /api/cv/process, después de
-    # subido -- alguien con esta URL puede igual poner un archivo más
-    # grande en el bucket. Si esto importa de verdad, migrar a
+    # límite de MAX_PDF_SIZE_BYTES hoy se aplica recién en /api/cv/process,
+    # después de subido -- alguien con esta URL puede igual poner un archivo
+    # más grande en el bucket. Si esto importa de verdad, migrar a
     # generate_presigned_post con esa condición.
     return _client.generate_presigned_url(
         "put_object",

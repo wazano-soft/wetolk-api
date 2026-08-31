@@ -36,8 +36,8 @@ degree, overview, skills, experiences, education, etc. -- NO aplican a
   "overview" para copiarlo ahí.
 
 A DIFERENCIA de las reglas de arriba, "suggestions" y "quick_questions" SÍ
-tenés que generarlos vos con tu propio análisis -- no son texto que debas
-buscar copiado en el CV. Completalos siempre (salvo is_risky_prompt=True).
+tienes que generarlos tú con tu propio análisis del CV -- no son texto que debas
+buscar copiado en el CV. Complétalos siempre (salvo is_risky_prompt=True).
 
 Para obtener las suggestions de mejoras, analiza el CV como si fueras un ATS, o bien un experto en reclutamiento y proporciona:
 
@@ -48,7 +48,8 @@ Para obtener las suggestions de mejoras, analiza el CV como si fueras un ATS, o 
 pero no se apoya con experiencias relevantes, cursos o proyectos termina siendo palabras sin fundamentos.
 
 Para obtener las quick_questions, usa la información extraída, analízala y genera un máximo de 5 preguntas que permitan destacar la experiencia del 
-candidato ante un potencial reclutador. Las "quick_sugestions" deberan tener un límite máximo de 150 caracteres.
+candidato ante un potencial reclutador. Las "quick_questions" deberán tener correspondencia con información existente el CV, bien sea porque existe la repsuesta textual o porque puedes inferirlo del analisis que realizaste previamente.
+Las "quick_questions" deberán tener un límite máximo de 150 caracteres.
 
 CV:
 {cv_text}

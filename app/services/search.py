@@ -1,12 +1,12 @@
 from app.schemas.search import CandidateMatch, SearchCriteria
 from app.services.llm import get_chat_model
 
-CRITERIA_PROMPT = """Extraé los criterios de búsqueda de esta descripción de puesto en
+CRITERIA_PROMPT = """Extrae los criterios de búsqueda de esta descripción de puesto en
 lenguaje natural, al esquema dado.
 
 REGLAS:
 - Copia únicamente lo que está implícito o explícito en el texto.
-- Si un criterio no aparece, devoluelve null o lista vacía. No lo inventes.
+- Si un criterio no aparece, devuelve null o lista vacía. No lo inventes.
 - years_min es el mínimo de años de experiencia pedido, si se menciona.
 
 Búsqueda: {query}
@@ -23,7 +23,7 @@ def extract_search_criteria(query: str) -> SearchCriteria:
 MATCH_PROMPT = """Un reclutador busca: "{query}"
 
 Este es el perfil de un candidato (en tercera persona, no le atribuyas nada que
-no esté acá):
+no esté aquí):
 {cv_context}
 
 Genera, al esquema dado:

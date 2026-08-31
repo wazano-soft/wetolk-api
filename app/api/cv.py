@@ -267,7 +267,7 @@ def process_cv(
     # nota en r2.create_upload_url), no queremos cargarlo completo en
     # memoria solo para rechazarlo después.
     if r2.get_object_size(body.r2_key) > r2.MAX_PDF_SIZE_BYTES:
-        raise HTTPException(status_code=400, detail="PDF exceeds 150KB")
+        raise HTTPException(status_code=400, detail="PDF exceeds 250KB")
 
     pdf_bytes = r2.download_object(body.r2_key)
 

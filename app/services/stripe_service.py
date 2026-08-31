@@ -4,7 +4,12 @@ from app.core.config import settings
 
 stripe.api_key = settings.stripe_secret_key
 
-DONATION_CURRENCY = "usd"
+# La cuenta de Stripe es de México: liquida en MXN y solo cobra en MXN a
+# tarjetas locales. Los presets se piensan en USD y se convierten a
+# centavos de peso antes de llegar acá (ver services/fx.py). Con Adaptive
+# Pricing activado en el Dashboard, Stripe le muestra al donante extranjero
+# su moneda local partiendo de este MXN.
+DONATION_CURRENCY = "mxn"
 
 
 def create_checkout_session(
