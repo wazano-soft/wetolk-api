@@ -123,8 +123,10 @@ class ProfileUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_salary_range(self) -> "ProfileUpdate":
+        # Mensaje pensado para mostrarse tal cual al usuario (el front lo
+        # extrae del 422 vía parseApiError) -- neutro, sin nombres de campo.
         if self.salary_min is not None and self.salary_max is not None and self.salary_min > self.salary_max:
-            raise ValueError("salary_min cannot be greater than salary_max")
+            raise ValueError("El salario mínimo no puede ser mayor que el máximo.")
         return self
 
 
@@ -148,7 +150,10 @@ def update_profile(
     updates = body.model_dump(exclude_unset=True, exclude={"full_name"})
     for field in _NOT_NULLABLE_FIELDS & updates.keys():
         if updates[field] is None:
-            raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+            raise HTTPException(
+                status_code=422,
+                detail="No se pudo guardar: falta un dato obligatorio del perfil. Recarga la página e inténtalo de nuevo.",
+            )
     if "onboarding_step" in updates:
         # Monotónico -- una pestaña vieja del wizard (ej. quedó abierta en
         # el paso 2 mientras en otra ya se llegó al 4) no puede retroceder
